@@ -49,9 +49,8 @@ int main(int argc, char *argv[]){
 	SDL_Window *window;
 	SDL_Renderer *renderer;
 	SDL_Event event;
-	int width = 640;
-	int height = 480;
-	//int cx, cy;
+	int width = 1;
+	int height = 1;
 	bool loop = 1;
 
 	int mouseX, mouseY, pmouseX, pmouseY;
@@ -60,14 +59,12 @@ int main(int argc, char *argv[]){
 		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't initialize SDL: %s", SDL_GetError());
 		return 3;
 	}
-	if (SDL_CreateWindowAndRenderer(width, height, SDL_WINDOW_RESIZABLE, &window, &renderer)) {
+	if (SDL_CreateWindowAndRenderer(width, height, SDL_WINDOW_RESIZABLE | SDL_WINDOW_MAXIMIZED, &window, &renderer)) {
 		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't create window and renderer: %s", SDL_GetError());
 		return 3;
 	}
 	SDL_MaximizeWindow( window );
 	SDL_GetWindowSize( window, &width, &height );
-	//cx = width / 2;
-	//cy = height / 2;
 
 	IMG_Init( IMG_INIT_PNG | IMG_INIT_JPG | IMG_INIT_TIF | IMG_INIT_WEBP );
 
