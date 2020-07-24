@@ -63,7 +63,7 @@ int main(int argc, char *argv[]){
 		SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Couldn't create window and renderer: %s", SDL_GetError());
 		return 3;
 	}
-	SDL_MaximizeWindow( window );
+	//SDL_MaximizeWindow( window );
 	SDL_GetWindowSize( window, &width, &height );
 
 	IMG_Init( IMG_INIT_PNG | IMG_INIT_JPG | IMG_INIT_TIF | IMG_INIT_WEBP );
