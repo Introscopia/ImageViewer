@@ -35,8 +35,16 @@ void get_filenames( char *directory, char ***list, int *length ){
         closedir (dir);
     }
     else { 
-        printf("ERROR: could not open vessel directory: %s\n", directory );
+        printf("ERROR: could not open directory: %s\n", directory );
     }
+}
+
+void remove_item_from_string_list( char ***list, int X, int *len ){
+	*len -= 1;
+	for (int i = X; i < (*len); ++i){
+		(*list)[i] = (*list)[i+1];
+	}
+	*list = realloc( *list, (*len) * sizeof(char**) );
 }
 
 
@@ -66,17 +74,22 @@ int main(int argc, char *argv[]){
 	//SDL_MaximizeWindow( window );
 	SDL_GetWindowSize( window, &width, &height );
 
+	int antialiasing = 2;
+	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "2");
+
+
 	IMG_Init( IMG_INIT_PNG | IMG_INIT_JPG | IMG_INIT_TIF | IMG_INIT_WEBP );
 
 
-	SDL_Surface *icon = IMG_Load( "icon32.png" );
-	SDL_SetWindowIcon( window, icon );
+	//SDL_Surface *icon = IMG_Load( "icon32.png" );
+	//SDL_SetWindowIcon( window, icon );
 
 
-	SDL_Color bg [4] = { {0, 0, 0, 255},
-						 {55, 55, 55, 255},
-						 {200, 200, 200, 255},
-	                     {255, 255, 255, 255} };
+	SDL_Color bg [] = { {0, 0, 0, 255},
+						{85, 85, 85, 255},
+						{127, 127, 127, 255},
+						{171, 171, 171, 255},
+	                    {255, 255, 255, 255} };
 	int selected_color = 2;
 	//Uint32 rmask, gmask, bmask, amask;
 	#if SDL_BYTEORDER == SDL_BIG_ENDIAN
@@ -96,11 +109,16 @@ int main(int argc, char *argv[]){
 	int W = 0, H = 0;
 	SDL_Rect DST;
 	SDL_Rect window_rect = (SDL_Rect){0, 0, width, height};
-	bool dragging;
+	SDL_Rect max_window_rect = (SDL_Rect){0, 0, width, height};
+	SDL_Rect sel_rect = (SDL_Rect){0,0,0,0};
+	bool mousePressed;
+	int clickX, clickY;
 	bool fit = 0;
 	int zoomI = 0;
 	double zoom = 1;
 	double tx = 0, ty = 0;
+	bool CTRL = 0;
+	bool SHIFT = 0;
 
 	char **directory_list = NULL;
 	int list_len = 0;
@@ -187,12 +205,18 @@ int main(int argc, char *argv[]){
 
 					break;
 				case SDL_KEYDOWN:
-						
+
+					if( event.key.keysym.sym == SDLK_LCTRL  || event.key.keysym.sym == SDLK_RCTRL  ) CTRL  = 1;
+					if( event.key.keysym.sym == SDLK_LSHIFT || event.key.keysym.sym == SDLK_RSHIFT ) SHIFT = 1;
+
 					break;
 				case SDL_KEYUP:;
+
 					int psel = selected_file;
 					int dir = 0;
-					if( event.key.keysym.sym == SDLK_LEFT ){
+					     if( event.key.keysym.sym == SDLK_LCTRL  || event.key.keysym.sym == SDLK_RCTRL  ) CTRL  = 0;
+					else if( event.key.keysym.sym == SDLK_LSHIFT || event.key.keysym.sym == SDLK_RSHIFT ) SHIFT = 0;
+					else if( event.key.keysym.sym == SDLK_LEFT ){
 						selected_file--;
 						dir = -1;
 					} 
@@ -213,23 +237,61 @@ int main(int argc, char *argv[]){
 					}
 					else if( event.key.keysym.sym == 'c' ){
 						selected_color++;
-						if( selected_color >= 4 ) selected_color = 0;
+						if( selected_color >= 5 ) selected_color = 0;
+					}
+					else if( event.key.keysym.sym == 'a' ){
+						puts("hi");
+						antialiasing++;
+						if( antialiasing > 2 ) antialiasing = 0;
+						char s [2];
+						sprintf( s, "%d", antialiasing );
+						printf("%s, %d\n", s, antialiasing );
+						//SDL_SetHint( SDL_HINT_RENDER_SCALE_QUALITY, s );
+						SDL_SetHintWithPriority( SDL_HINT_RENDER_SCALE_QUALITY, s, SDL_HINT_OVERRIDE );
+
+						//RELOAD
+						char *path [256];
+						sprintf( path, "%s\\%s", folderpath, directory_list[ selected_file ] );
+						//printf("%d %s %s\n\n", selected_file, folderpath, path );
+						SDL_DestroyTexture( TEXTURE );
+						TEXTURE = IMG_LoadTexture( renderer, path );
+
+					}
+					else if( event.key.keysym.sym == SDLK_DELETE && SHIFT ){
+						char *path [256];
+						sprintf( path, "%s\\%s", folderpath, directory_list[ selected_file ] );
+						//printf("%s\n", path );
+						remove( path );
+						remove_item_from_string_list( &directory_list, selected_file, &list_len );
+						SDL_DestroyTexture( TEXTURE );
+						TEXTURE = NULL;
+						//selected_file++;
+						psel--;
+						dir = 1;
 					}
 
 
 
 					if( psel != selected_file ){
-
 						bool is_image = 0;
 						int count = 0;
 						while( !is_image ){
-							if( selected_file < 0 ) selected_file = list_len-1;
-							if( selected_file >= list_len ) selected_file = 0;
+							if( selected_file < 0 ){
+								if( list_len <= 1 ) break;
+								selected_file = list_len-1;
+							}
+							if( selected_file >= list_len ){
+								if( list_len <= 1 ) break;
+								selected_file = 0;
+							}
+
 
 							int len = strlen( directory_list[ selected_file ] );
 							char *ext = substr( directory_list[ selected_file ], len-4, len );
 							if( strcmp( ext, ".png") == 0 ||
+								strcmp( ext, ".PNG") == 0 ||
 							    strcmp( ext, ".jpg") == 0 || 
+							    strcmp( ext, ".JPG") == 0 || 
 							    strcmp( ext, "jpeg") == 0 ||
 							    strcmp( ext, ".gif") == 0 ||
 							    strcmp( ext, ".tif") == 0 ||
@@ -282,21 +344,55 @@ int main(int argc, char *argv[]){
 					pmouseY = mouseY;
 					mouseX = event.motion.x;
 					mouseY = event.motion.y;
-					if( dragging ){
-						DST.x += event.motion.xrel;
-						DST.y += event.motion.yrel;
-						fit = 0;
+					if( mousePressed ){
+						if( CTRL ){
+							int tcx = DST.x + (zoom * clickX);
+							int tcy = DST.y + (zoom * clickY);
+							sel_rect.x = min( mouseX, tcx); 
+							sel_rect.y = min(mouseY, tcy); 
+							sel_rect.w = abs( mouseX - tcx ); 
+							sel_rect.h = abs( mouseY - tcy );
+						}
+						else{
+							DST.x += event.motion.xrel;
+							DST.y += event.motion.yrel;
+							fit = 0;
+						}
 					}
+					else update = 0;
 
 					break;
 				case SDL_MOUSEBUTTONDOWN:
 
-					dragging = 1;
+					mousePressed = 1;
+
+					if( CTRL ){
+						clickX = (mouseX - DST.x) / zoom;
+						clickY = (mouseY - DST.y) / zoom;
+						sel_rect.x = DST.x + (zoom * clickX);
+						sel_rect.y = DST.y + (zoom * clickY);
+						sel_rect.w = 1;
+						sel_rect.h = 1;
+					}
 
 					break;
 				case SDL_MOUSEBUTTONUP:
 
-					dragging = 0;
+					mousePressed = 0;
+
+					if( CTRL ){
+						
+						SDL_Rect fitrect = (SDL_Rect){ 0, 0, sel_rect.w, sel_rect.h };
+						fit_rect( &fitrect, &window_rect );
+
+						zoom *= (fitrect.w / (float) sel_rect.w);
+						zoomI = logarithm( 1.1, zoom );
+						DST.x = fitrect.x - (clickX * zoom);
+						DST.y = fitrect.y - (clickY * zoom);
+						DST.w = W * zoom;
+						DST.h = H * zoom;
+						clickX = -1;
+					}
 
 					break;
 				case SDL_MOUSEWHEEL:;
@@ -314,19 +410,42 @@ int main(int argc, char *argv[]){
 					break;
 				case SDL_WINDOWEVENT:
 
-					if( event.window.event == SDL_WINDOWEVENT_RESIZED      ||
-						event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED ||
-						event.window.event == SDL_WINDOWEVENT_MAXIMIZED    ||
-						event.window.event == SDL_WINDOWEVENT_RESTORED     ){
+					switch( event.window.event ){
+						case SDL_WINDOWEVENT_RESTORED:
 
-						SDL_GetWindowSize( window, &width, &height );
-						window_rect.w = width;
-						window_rect.h = height;
-						if( fit ){
-							fit_rect( &DST, &window_rect );
-							zoom = DST.w / (float) W;
-							zoomI = logarithm( 1.1, zoom );
-						}
+							if( W <= max_window_rect.w && H <= max_window_rect.h ){
+								SDL_SetWindowSize( window, W, H );
+								zoomI = 0;
+								zoom = 1;
+							}
+							else{
+								DST.w = W;
+								DST.h = H;
+								fit_rect( &DST, &max_window_rect );
+								SDL_SetWindowSize( window, DST.w, DST.h );
+								zoom = DST.w / (float) W;
+								zoomI = logarithm( 1.1, zoom );
+							}
+							fit = 1;
+							tx = 0;
+							ty = 0;
+							SDL_GetWindowSize( window, &width, &height );
+							window_rect.w = width;
+							window_rect.h = height;
+							break;
+
+						case SDL_WINDOWEVENT_SIZE_CHANGED:
+						case SDL_WINDOWEVENT_RESIZED     :
+						case SDL_WINDOWEVENT_MAXIMIZED   :
+							SDL_GetWindowSize( window, &width, &height );
+							window_rect.w = width;
+							window_rect.h = height;
+							if( fit ){
+								fit_rect( &DST, &window_rect );
+								zoom = DST.w / (float) W;
+								zoomI = logarithm( 1.1, zoom );
+							}
+						break;
 					}
 
 					break;
@@ -334,10 +453,18 @@ int main(int argc, char *argv[]){
 		}
 
 		if( update ){
+
 			SDL_SetRenderDrawColor( renderer, bg[selected_color].r, bg[selected_color].g, bg[selected_color].b, bg[selected_color].a );
 			SDL_RenderClear( renderer );
 
 			SDL_RenderCopy( renderer, TEXTURE, NULL, &DST );
+
+			if( mousePressed && CTRL ){
+				SDL_SetRenderDrawColor( renderer, 255, 0, 255, 255 );
+				int tcx = DST.x + (zoom * clickX);
+				int tcy = DST.y + (zoom * clickY);
+				SDL_RenderDrawRect( renderer, &sel_rect );
+			}
 
 			SDL_RenderPresent(renderer);
 		}
@@ -350,7 +477,7 @@ int main(int argc, char *argv[]){
 	}
 	free( directory_list );
 	free( folderpath );
-	SDL_FreeSurface( icon );
+	//SDL_FreeSurface( icon );
 	SDL_DestroyTexture( TEXTURE );
 	SDL_DestroyRenderer(renderer);
 	SDL_DestroyWindow( window );
