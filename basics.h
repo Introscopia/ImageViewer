@@ -98,6 +98,7 @@ bool intersecting_or_touching( SDL_Rect *A, SDL_Rect *B);
 SDL_Rect add_rects( SDL_Rect *A, SDL_Rect *B);
 //scale and translate A to fit inside B, centralized
 void fit_rect( SDL_Rect *A, SDL_Rect *B );
+//void fit_rect_other???
 
 bool alphanumeric( char c );
 bool lower_case( char c );

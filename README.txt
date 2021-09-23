@@ -1,18 +1,32 @@
 README
 
 "ImageViewer" is an ultra-minimalistic image viewing program for Windows built with C and SDL2 by Introscopia in 2020.
+https://introscopia.github.io/
+introscopia@protonmail.com
 
-> click and drag to pan.
-> mouse wheel to zoom.
-> [spacebar] to fit image to window.
-> [1] to set zoom 1:1.
+> [🡆/🡄 Arrow keys] Navigate to next/previous images in the same folder.
+> [Mouse side buttons (mouse X1 and X2)] Also navigate to next/previous images in the same folder.
+
+> [Click&Drag] Pan around.
+> [MIDDLE Click&Drag] Pan around relative to initial mouse location.
+> [ H,J,K,L ] Pan around vim-style. (panning is reversed. You move the "camera", not the image)
+> [🡅/🡇 Arrow keys] pan up and down.
+
+> [Mouse Wheel] Zoom in/out.
+> [I] Zoom in
+> [O] Zoom out
+> [CTRL + Click&Drag] select area to zoom into.
+> [1] Set zoom 1:1.
+> [spacebar] Fit image to window.
+
 > [A] to cycle through scale quality options:
 	0: Nearest pixel sampling
 	1: linear filtering
 	2: anisotropic filtering (default)
 > [C] to cycle through background colors.
-> [LEFT/RIGHT ARROWS] to navigate to other images in the same folder.
-> [CTRL + Click&Drag] select area to zoom into.
-> [SHIFT + DELETE] permanently delete image (skips recycle bin!!!) 
+
+> [F11] toggle fullscreen
+
+> [SHIFT + DELETE] permanently delete image (skips recycle bin!!!)
 
 Enjoy!

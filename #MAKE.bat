@@ -1,2 +1,2 @@
-mingw32-make
+mingw32-make quick
 cmd /k
