@@ -1,5 +1,14 @@
 #include "basics.h"
 
+
+Uint32 SDL_Color_to_Uint32( SDL_Color C ){
+	#if SDL_BYTEORDER == SDL_LIL_ENDIAN
+		return C.a << 24 | C.b << 16 | C.g << 8 | C.r;
+	#else
+		return C.r << 24 | C.g << 16 | C.b << 8 | C.a;
+	#endif
+}
+
 double sq( double a ){
 	return a * a;
 }

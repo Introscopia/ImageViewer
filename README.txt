@@ -25,7 +25,8 @@ introscopia@protonmail.com
 	2: anisotropic filtering (default)
 > [C] to cycle through background colors.
 
-> [F11] toggle fullscreen
+> [F11] toggle fullscreen.
+> [F5] reload the file, refresh the list of files in the folder.
 
 > [SHIFT + DELETE] permanently delete image (skips recycle bin!!!)
 

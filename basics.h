@@ -26,7 +26,17 @@
 //const SDL_Color black = {0, 0, 0, 255};
 //const SDL_Color white = {255, 255, 255, 255};
 
-Uint32 rmask, gmask, bmask, amask;
+#if SDL_BYTEORDER == SDL_LIL_ENDIAN
+   #define rmask 0xff000000
+   #define gmask 0x00ff0000
+   #define bmask 0x0000ff00
+   #define amask 0x000000ff
+#else
+   #define rmask 0x000000ff
+   #define gmask 0x0000ff00
+   #define bmask 0x00ff0000
+   #define amask 0xff000000
+#endif
 
 typedef char bool;
 
@@ -34,7 +44,7 @@ typedef char bool;
 //#define remove_element( ptr, len, ind, siz ) for( int H = ind; H < *len; ++H )
 
 
-
+Uint32 SDL_Color_to_Uint32( SDL_Color C );
 
 double sq( double a );
 

@@ -77,6 +77,8 @@ int main(int argc, char *argv[]){
 	//SDL_MaximizeWindow( window );
 	SDL_GetWindowSize( window, &width, &height );
 
+	SDL_Surface *window_surf = SDL_GetWindowSurface( window );
+
 	int antialiasing = 2;
 	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "2");
 
@@ -103,6 +105,8 @@ int main(int argc, char *argv[]){
 	SDL_Rect window_rect = (SDL_Rect){0, 0, width, height};
 	SDL_Rect max_window_rect = (SDL_Rect){0, 0, width, height};
 	SDL_Rect sel_rect = (SDL_Rect){0,0,0,0};
+
+	SDL_Surface *SURFACE = NULL;
 
 	float cx = width / 2.0;
 	float cy = height / 2.0;
@@ -138,11 +142,38 @@ int main(int argc, char *argv[]){
 
 	char buffer [512];
 
-	if( argc == 2 ){
+
+	void load_image( char *path ){
 		//printf("%d, %s\n", argc, argv[1] );
-		TEXTURE = IMG_LoadTexture( renderer, argv[1] );
+
+		int off = 0;
+		for (int i = strlen( path ); i >=0 ; --i){
+			if( path[i] == '\\' ){
+				off = i+1;
+				break;
+			}
+		}
+
+		TEXTURE = IMG_LoadTexture( renderer, path );
 		
-		SDL_QueryTexture( TEXTURE, NULL, NULL, &W, &H);
+		if( TEXTURE == NULL ){
+			
+			SURFACE = IMG_Load( path );
+
+			if( SURFACE == NULL ){
+				sprintf( buffer, "%s   ERROR: %s", path + off, SDL_GetError() );
+			}
+			else{
+				W = SURFACE->w;
+				H = SURFACE->h;
+				sprintf( buffer, "%s   (%d × %d)", path + off, W, H );
+			}
+		}
+		else{
+			SDL_QueryTexture( TEXTURE, NULL, NULL, &W, &H);
+			sprintf( buffer, "%s   (%d × %d)", path + off, W, H );
+		}
+		SDL_SetWindowTitle( window, buffer );
 
 		DST = (SDL_Rect){0, 0, W, H};
 		if( W < width && H < height ){
@@ -150,6 +181,8 @@ int main(int argc, char *argv[]){
 			ty = 0.5 * (height - H);
 			DST.x = lrint( tx );
 			DST.y = lrint( ty );
+			zoomI = 0;
+			zoom = 1;
 		}
 		else{
 			fit_rect( &DST, &window_rect );
@@ -158,25 +191,20 @@ int main(int argc, char *argv[]){
 			zoomI = logarithm( 1.1, zoom );
 			fit = 1;
 		}
+	}
 
-		int len = strlen( argv[1] );
+
+	void load_folderlist( char *path ){
+
+		int len = strlen( path );
 		for (int i = len; i >=0 ; --i){
-			if( argv[1][i] == '\\' ){
+			if( path[i] == '\\' ){
 				folderpath_len = i;
 				break;
 			}
 		}
-		folderpath = substr( argv[1], 0, folderpath_len );
-		char *name = substr( argv[1], folderpath_len+1, len );
-
-		if( TEXTURE == NULL ){
-			sprintf( buffer, "%s   ERROR: %s", name, SDL_GetError() );
-		}
-		else{
-			sprintf( buffer, "%s   (%d × %d)", name, W, H );
-		}
-		SDL_SetWindowTitle( window, buffer );
-		
+		folderpath = substr( path, 0, folderpath_len );
+		char *name = substr( path, folderpath_len+1, len );
 
 		get_filenames( folderpath, &directory_list, &list_len );
 
@@ -208,6 +236,16 @@ int main(int argc, char *argv[]){
 			}
 		}
 		free( name );
+	}
+
+
+
+
+
+	if( argc == 2 ){
+		
+		load_image( argv[1] );
+		load_folderlist( argv[1] );
 	}	
 
 
@@ -300,6 +338,21 @@ int main(int argc, char *argv[]){
 						//printf("%d %s %s\n\n", selected_file, folderpath, path );
 						SDL_DestroyTexture( TEXTURE );
 						TEXTURE = IMG_LoadTexture( renderer, path );
+
+					}
+					else if( event.key.keysym.sym == SDLK_F5 ){
+
+						psel = -1;
+
+						sprintf( buffer, "%s\\%s", folderpath, directory_list[ selected_file ] );
+
+						for (int i = 0; i < list_len; ++i){
+							free( directory_list[i] );
+						}
+						free( directory_list );
+						free( folderpath );
+						
+						load_folderlist( buffer );
 
 					}
 					else if( event.key.keysym.sym == SDLK_F11 ){
@@ -537,39 +590,12 @@ int main(int argc, char *argv[]){
 
 				if( is_image ){
 
-					char *path [256];
-					sprintf( path, "%s\\%s", folderpath, directory_list[ selected_file ] );
+					sprintf( buffer, "%s\\%s", folderpath, directory_list[ selected_file ] );
 					//printf("%d %s %s\n\n", selected_file, folderpath, path );
 					SDL_DestroyTexture( TEXTURE );
-					TEXTURE = IMG_LoadTexture( renderer, path );
+					SDL_FreeSurface( SURFACE );
 
-					SDL_QueryTexture( TEXTURE, NULL, NULL, &W, &H);
-
-					DST = (SDL_Rect){0, 0, W, H};
-					window_rect = (SDL_Rect){0, 0, width, height};
-					if( W < width && H < height ){
-						tx = 0.5 * (width  - W);
-						ty = 0.5 * (height - H);
-						DST.x = lrint( tx );
-						DST.y = lrint( ty );
-						zoomI = 0;
-						zoom = 1;
-					}
-					else{
-						fit_rect( &DST, &window_rect );
-						tx = DST.x; ty = DST.y;
-						zoom = DST.w / (float) W;
-						zoomI = logarithm( 1.1, zoom );
-						fit = 1;
-					}
-
-					if( TEXTURE == NULL ){
-						sprintf( buffer, "%s   ERROR: %s", directory_list[ selected_file ], SDL_GetError() );
-					}
-					else{
-						sprintf( buffer, "%s   (%d × %d)", directory_list[ selected_file ], W, H );
-					}
-					SDL_SetWindowTitle( window, buffer );
+					load_image( buffer );
 				}
 			}
 		}
@@ -625,10 +651,17 @@ int main(int argc, char *argv[]){
 
 		if( update ){
 
-			SDL_SetRenderDrawColor( renderer, bg[selected_color].r, bg[selected_color].g, bg[selected_color].b, bg[selected_color].a );
-			SDL_RenderClear( renderer );
+			if( TEXTURE != NULL ){
+				SDL_SetRenderDrawColor( renderer, bg[selected_color].r, bg[selected_color].g, bg[selected_color].b, bg[selected_color].a );
+				SDL_RenderClear( renderer );
+				SDL_RenderCopy( renderer, TEXTURE, NULL, &DST );
+			}
+			else if( SURFACE != NULL ){
 
-			SDL_RenderCopy( renderer, TEXTURE, NULL, &DST );
+				SDL_FillRect( window_surf, NULL, SDL_Color_to_Uint32(bg[selected_color]) );
+				SDL_Rect copy = DST;
+				SDL_BlitScaled( SURFACE, NULL, window_surf, &copy );
+			}
 
 			if( mmpan ){
 				SDL_SetRenderDrawColor( renderer, 0, 255, 0, 255 );
@@ -646,7 +679,13 @@ int main(int argc, char *argv[]){
 				SDL_RenderDrawRect( renderer, &sel_rect );
 			}
 
-			SDL_RenderPresent(renderer);
+
+			if( TEXTURE != NULL ){
+				SDL_RenderPresent(renderer);
+			}
+			else if( SURFACE != NULL ){
+				SDL_UpdateWindowSurface( window );
+			}
 		}
 
 	}//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> / L O O P <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -659,6 +698,7 @@ int main(int argc, char *argv[]){
 	free( folderpath );
 	//SDL_FreeSurface( icon );
 	SDL_DestroyTexture( TEXTURE );
+	SDL_FreeSurface( SURFACE );
 	SDL_DestroyRenderer( renderer );
 	SDL_DestroyWindow( window );
 
