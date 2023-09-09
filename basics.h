@@ -38,7 +38,7 @@
    #define amask 0xff000000
 #endif
 
-typedef char bool;
+typedef int bool;
 
 
 //#define remove_element( ptr, len, ind, siz ) for( int H = ind; H < *len; ++H )
@@ -71,6 +71,7 @@ double    sigmoidMap(double value, double source_lo, double source_hi, double de
 double advSigmoidMap(double value, double source_lo, double source_hi, double Slo, double Shi, double dest_lo, double dest_hi);
 
 int constrain( int a, int min, int max );
+int cycle( int a, int min, int max );
 float constrainf( float a, float min, float max );
 double constrainD( double a, double min, double max );
 

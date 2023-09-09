@@ -50,6 +50,11 @@ int constrain( int a, int min, int max ){
 	else if( a > max ) return max;
 	else return a;
 }
+int cycle( int a, int min, int max ){
+	if( a < min ) return max;
+	else if( a > max ) return min;
+	else return a;
+}
 float constrainf( float a, float min, float max ){
 	if( a < min ) return min;
 	else if( a > max ) return max;

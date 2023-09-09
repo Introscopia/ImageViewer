@@ -47,6 +47,29 @@ void remove_item_from_string_list( char ***list, int X, int *len ){
 	*list = realloc( *list, (*len) * sizeof(char**) );
 }
 
+//Case Insensitive String Comparison
+int strcicmp(char const *a, char const *b){
+    for (;; a++, b++) {
+        int d = tolower((unsigned char)*a) - tolower((unsigned char)*b);
+        if ( d != 0 || !*a || !*b ){
+            return d;
+        }
+    }
+}
+
+
+int check_extension( char *filename ){
+	//                           1       2       3       4       5      6        7       8      9
+	const char exts [][5] = { ".png", ".jpg", "jpeg", ".gif", ".tif", "tiff", ".ico", ".bmp", "webp" };
+
+	int len = strlen( filename );
+	for (int i = 0; i < 9; ++i ){
+		if( strcicmp( filename + len -4, exts[i] ) == 0 ){
+			return i+1;
+		}
+	}
+	return 0;
+}
 
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~O~~~~~~~~~~| M A I N |~~~~~~~~~~~O~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -100,17 +123,25 @@ int main(int argc, char *argv[]){
 
 
 	SDL_Texture *TEXTURE = NULL;
+	SDL_Surface *SURFACE = NULL;
+
+	IMG_Animation *ANIMATION = NULL;
+	int FRAME, NFRAME;
+	bool animating = 0;
+
 	int W = 0, H = 0;
 	SDL_Rect DST;
 	SDL_Rect window_rect = (SDL_Rect){0, 0, width, height};
 	SDL_Rect max_window_rect = (SDL_Rect){0, 0, width, height};
 	SDL_Rect sel_rect = (SDL_Rect){0,0,0,0};
-
-	SDL_Surface *SURFACE = NULL;
+	int angle_i = 0;
+	double ANGLE = 0;
+	SDL_RendererFlip FLIP = SDL_FLIP_NONE;
+	
 
 	float cx = width / 2.0;
 	float cy = height / 2.0;
-	bool mousePressed;
+	bool mousePressed = 0;
 	int clickX, clickY;
 
 	bool mmpan = 0;// middle mouse pan
@@ -118,7 +149,7 @@ int main(int argc, char *argv[]){
 
 	bool fit = 0;
 
-	double zoomI = 0;
+	double zoom_i = 0;
 	double zoom = 1;
 	bool zoom_in = 0;
 	bool zoom_out = 0;
@@ -130,6 +161,8 @@ int main(int argc, char *argv[]){
 	bool pan_down = 0;
 	bool pan_left = 0;
 	bool pan_right = 0;
+	bool rotate_ccw = 0;
+	bool rotate_cw = 0;
 
 	bool fullscreen = 0;
 	bool minimized = 0;
@@ -143,8 +176,26 @@ int main(int argc, char *argv[]){
 	char buffer [512];
 
 
-	void load_image( char *path ){
+	int load_image( char *path ){
 		//printf("%d, %s\n", argc, argv[1] );
+
+		int EXT = check_extension( path );
+
+		if( !EXT ) return 0;
+
+		if( TEXTURE != NULL ){
+			SDL_DestroyTexture( TEXTURE ); 
+			TEXTURE = NULL;
+		}
+		if( SURFACE != NULL ){
+			SDL_FreeSurface( SURFACE ); 
+			SURFACE = NULL;
+		}
+		if( ANIMATION != NULL ){
+			IMG_FreeAnimation( ANIMATION ); 
+			ANIMATION = NULL;
+			animating = 0;
+		}
 
 		int off = 0;
 		for (int i = strlen( path ); i >=0 ; --i){
@@ -154,43 +205,77 @@ int main(int argc, char *argv[]){
 			}
 		}
 
-		TEXTURE = IMG_LoadTexture( renderer, path );
+		//printf("EXT: %d\n", EXT );
+		if( EXT == 4 || EXT == 9 ){//.gif or webp
+			ANIMATION = IMG_LoadAnimation( path );
+
+			if( ANIMATION == NULL ){
+				//printf("bad anim, %s\n", SDL_GetError() );
+				goto reload;
+			}
+			else{
+				W = ANIMATION->w;
+				H = ANIMATION->h;
+				FRAME = 0;
+				NFRAME = clock() + ANIMATION->delays[0];
+				animating = 1;
+			}
+		}
+		else{
+			reload:
+			TEXTURE = IMG_LoadTexture( renderer, path );
+		}
 		
 		if( TEXTURE == NULL ){
+			//puts("bad texture");
 			
 			SURFACE = IMG_Load( path );
 
 			if( SURFACE == NULL ){
+				//puts( "bad surface");
 				sprintf( buffer, "%s   ERROR: %s", path + off, SDL_GetError() );
+				SDL_SetWindowTitle( window, buffer );
+				return 0;
 			}
 			else{
 				W = SURFACE->w;
 				H = SURFACE->h;
-				sprintf( buffer, "%s   (%d × %d)", path + off, W, H );
 			}
 		}
 		else{
 			SDL_QueryTexture( TEXTURE, NULL, NULL, &W, &H);
-			sprintf( buffer, "%s   (%d × %d)", path + off, W, H );
 		}
+
+		if( TEXTURE != NULL && antialiasing > 0 && (W < 200 || H < 200) ){
+			antialiasing = 0;
+			SDL_SetHintWithPriority( SDL_HINT_RENDER_SCALE_QUALITY, "0", SDL_HINT_OVERRIDE );
+			goto reload;
+		}
+
+		sprintf( buffer, "%s   (%d × %d)", path + off, W, H );
 		SDL_SetWindowTitle( window, buffer );
 
 		DST = (SDL_Rect){0, 0, W, H};
-		if( W < width && H < height ){
+		if( !fit && W < width && H < height ){
 			tx = 0.5 * (width  - W);
 			ty = 0.5 * (height - H);
 			DST.x = lrint( tx );
 			DST.y = lrint( ty );
-			zoomI = 0;
+			zoom_i = 0;
 			zoom = 1;
 		}
 		else{
 			fit_rect( &DST, &window_rect );
 			tx = DST.x; ty = DST.y;
 			zoom = DST.w / (float) W;
-			zoomI = logarithm( 1.1, zoom );
+			zoom_i = logarithm( 1.1, zoom );
 			fit = 1;
 		}
+		angle_i = 0;
+		ANGLE = 0;
+		FLIP = SDL_FLIP_NONE;
+
+		return 1;
 	}
 
 
@@ -249,7 +334,6 @@ int main(int argc, char *argv[]){
 	}	
 
 
-
 	//puts("<<Entering Loop>>");
 	while ( loop ) { //>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> L O O P <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< 
 
@@ -281,17 +365,43 @@ int main(int argc, char *argv[]){
 					else if( event.key.keysym.sym == 'i' ) zoom_in = 1;
 					else if( event.key.keysym.sym == 'o' ) zoom_out = 1;
 
+					else if( event.key.keysym.sym == SDLK_KP_PLUS ) zoom_in = 1;
+					else if( event.key.keysym.sym == SDLK_KP_MINUS ) zoom_out = 1;
+
+					else if( event.key.keysym.sym == SDLK_KP_5 ) zoom_in = 1;
+					else if( event.key.keysym.sym == SDLK_KP_0 ) zoom_out = 1;
+
+					else if( event.key.keysym.sym == SDLK_KP_2 ) pan_down = 1;
+					else if( event.key.keysym.sym == SDLK_KP_4 ) pan_left = 1; 
+					else if( event.key.keysym.sym == SDLK_KP_6 ) pan_right = 1;
+					else if( event.key.keysym.sym == SDLK_KP_8 ) pan_up = 1;
+
 					break;
 				case SDL_KEYUP:;
 
 					     if( event.key.keysym.sym == SDLK_LCTRL  || event.key.keysym.sym == SDLK_RCTRL  ) CTRL  = 0;
 					else if( event.key.keysym.sym == SDLK_LSHIFT || event.key.keysym.sym == SDLK_RSHIFT ) SHIFT = 0;
 
-					else if( event.key.keysym.sym == SDLK_LEFT ){
+					else if( event.key.keysym.sym == SDLK_KP_7 ) rotate_ccw = 1;
+					else if( event.key.keysym.sym == SDLK_KP_9 ) rotate_cw = 1;
+					else if( event.key.keysym.sym == SDLK_KP_DIVIDE ){
+						if( FLIP & SDL_FLIP_HORIZONTAL ){
+							FLIP &= ~SDL_FLIP_HORIZONTAL;
+						}
+						else FLIP |= SDL_FLIP_HORIZONTAL;
+					}
+					else if( event.key.keysym.sym == SDLK_KP_MULTIPLY ){
+						if( FLIP & SDL_FLIP_VERTICAL ){
+							FLIP &= ~SDL_FLIP_VERTICAL;
+						}
+						else FLIP |= SDL_FLIP_VERTICAL;
+					}
+
+					else if( event.key.keysym.sym == SDLK_LEFT || event.key.keysym.sym == SDLK_KP_1 ){
 						selected_file--;
 						dir = -1;
 					} 
-					else if( event.key.keysym.sym == SDLK_RIGHT ){
+					else if( event.key.keysym.sym == SDLK_RIGHT || event.key.keysym.sym == SDLK_KP_3 ){
 						selected_file++;
 						dir = 1;
 					}
@@ -304,19 +414,37 @@ int main(int argc, char *argv[]){
 					else if( event.key.keysym.sym == 'i' ) zoom_in = 0; 
 					else if( event.key.keysym.sym == 'o' ) zoom_out = 0;
 
+					else if( event.key.keysym.sym == SDLK_KP_PLUS ) zoom_in = 0;
+					else if( event.key.keysym.sym == SDLK_KP_MINUS ) zoom_out = 0;
+
+					else if( event.key.keysym.sym == SDLK_KP_5 ) zoom_in = 0;
+					else if( event.key.keysym.sym == SDLK_KP_0 ) zoom_out = 0;
+
+					else if( event.key.keysym.sym == SDLK_KP_2 ) pan_down = 0;
+					else if( event.key.keysym.sym == SDLK_KP_4 ) pan_left = 0; 
+					else if( event.key.keysym.sym == SDLK_KP_6 ) pan_right = 0;
+					else if( event.key.keysym.sym == SDLK_KP_8 ) pan_up = 0;
+
 					else if( event.key.keysym.sym == ' ' ){
 						fit_rect( &DST, &window_rect );
 						tx = DST.x; ty = DST.y;
 						zoom = DST.w / (float) W;
-						zoomI = logarithm( 1.1, zoom );
+						zoom_i = logarithm( 1.1, zoom );
 						fit = 1;
+						angle_i = 0;
+						ANGLE = 0;
+						FLIP = SDL_FLIP_NONE;
 					}
 					else if( event.key.keysym.sym == '1' ){
 						tx = 0.5 * (width  - W);
 						ty = 0.5 * (height - H);
 						DST = (SDL_Rect){lrint(tx), lrint(ty), W, H};
 						zoom = 1;
-						zoomI = 0;
+						zoom_i = 0;
+						fit = 0;
+						angle_i = 0;
+						ANGLE = 0;
+						FLIP = SDL_FLIP_NONE;
 					}
 					else if( event.key.keysym.sym == 'c' ){
 						selected_color++;
@@ -463,7 +591,7 @@ int main(int argc, char *argv[]){
 						double otx = (sel_rect.x - tx) / zoom;
 						double oty = (sel_rect.y - ty) / zoom;
 						zoom *= (fitrect.w / (float) sel_rect.w);
-						zoomI = logarithm( 1.1, zoom );
+						zoom_i = logarithm( 1.1, zoom );
 						tx = fitrect.x - (otx * zoom);
 						ty = fitrect.y - (oty * zoom);
 						DST.x = lrint( tx );
@@ -481,8 +609,8 @@ int main(int argc, char *argv[]){
 
 					float xrd = (mouseX - tx) / zoom;
 					float yrd = (mouseY - ty) / zoom;
-					zoomI -= event.wheel.y;
-					zoom = pow( 1.1, zoomI );
+					zoom_i -= event.wheel.y;
+					zoom = pow( 1.1, zoom_i );
 					tx = mouseX - xrd * zoom;
 					ty = mouseY - yrd * zoom;
 					DST.x = lrint( tx );
@@ -505,7 +633,7 @@ int main(int argc, char *argv[]){
 							if( !minimized ){
 								if( W <= max_window_rect.w && H <= max_window_rect.h ){
 									SDL_SetWindowSize( window, W, H );
-									zoomI = 0;
+									zoom_i = 0;
 									zoom = 1;
 								}
 								else{
@@ -516,7 +644,7 @@ int main(int argc, char *argv[]){
 									tx = DST.x;
 									ty = DST.y;
 									zoom = DST.w / (float) W;
-									zoomI = logarithm( 1.1, zoom );
+									zoom_i = logarithm( 1.1, zoom );
 								}
 								fit = 1;
 								SDL_GetWindowSize( window, &width, &height );
@@ -542,7 +670,7 @@ int main(int argc, char *argv[]){
 								fit_rect( &DST, &window_rect );
 								tx = DST.x; ty = DST.y;
 								zoom = DST.w / (float) W;
-								zoomI = logarithm( 1.1, zoom );
+								zoom_i = logarithm( 1.1, zoom );
 							}
 						break;
 					}
@@ -551,51 +679,16 @@ int main(int argc, char *argv[]){
 			}
 
 			if( psel != selected_file ){
-				bool is_image = 0;
 				int count = 0;
-				while( !is_image ){
-					if( selected_file < 0 ){
-						if( list_len <= 1 ) break;
-						selected_file = list_len-1;
+
+				while( count < list_len ){
+					selected_file = cycle( selected_file, 0, list_len-1 );
+					sprintf( buffer, "%s\\%s", folderpath, directory_list[ selected_file ] );//printf("%d %s %s\n\n", selected_file, folderpath, path );
+					if( load_image( buffer ) ){
+						break;
 					}
-					if( selected_file >= list_len ){
-						if( list_len <= 1 ) break;
-						selected_file = 0;
-					}
-
-
-					int len = strlen( directory_list[ selected_file ] );
-					char *ext = substr( directory_list[ selected_file ], len-4, len );
-					if( strcmp( ext, ".png") == 0 ||
-						strcmp( ext, ".PNG") == 0 ||
-					    strcmp( ext, ".jpg") == 0 || 
-					    strcmp( ext, ".JPG") == 0 || 
-					    strcmp( ext, "jpeg") == 0 ||
-					    strcmp( ext, ".gif") == 0 ||
-					    strcmp( ext, ".tif") == 0 ||
-					    strcmp( ext, "tiff") == 0 ||
-					    strcmp( ext, ".ico") == 0 ||
-					    strcmp( ext, ".bmp") == 0 ||
-					    strcmp( ext, "webp") == 0 ){
-
-						is_image = 1;
-					}
-					else{
-						selected_file += dir;
-						count++;
-						if( count >= list_len ) break;
-					}
-					free( ext );
-				}
-
-				if( is_image ){
-
-					sprintf( buffer, "%s\\%s", folderpath, directory_list[ selected_file ] );
-					//printf("%d %s %s\n\n", selected_file, folderpath, path );
-					SDL_DestroyTexture( TEXTURE );
-					SDL_FreeSurface( SURFACE );
-
-					load_image( buffer );
+					selected_file += dir;
+					count++;
 				}
 			}
 		}
@@ -634,9 +727,9 @@ int main(int argc, char *argv[]){
 			//if( clock() - zoom_t > zoom_dt ){
 			double xrd = (cx - tx) / zoom;
 			double yrd = (cy - ty) / zoom;
-			if( zoom_in  ) zoomI += 0.075;
-			if( zoom_out ) zoomI -= 0.075;
-			zoom = pow( 1.1, zoomI );
+			if( zoom_in  ) zoom_i += 0.075;
+			if( zoom_out ) zoom_i -= 0.075;
+			zoom = pow( 1.1, zoom_i );
 			tx = cx - xrd * zoom;
 			ty = cy - yrd * zoom;
 			DST.x = lrint( tx );
@@ -645,8 +738,29 @@ int main(int argc, char *argv[]){
 			DST.h = H * zoom;
 			fit = 0;
 			update = 1;
-			//	zoom_t = clock();
-			//}
+		}
+		if( rotate_cw || rotate_ccw ){
+			angle_i += rotate_cw - rotate_ccw;
+			ANGLE = 90 * (angle_i % 4);
+			rotate_cw = 0;
+			rotate_ccw = 0;
+			update = 1;
+		}
+
+		if( animating ){
+			SDL_FillRect( window_surf, NULL, SDL_Color_to_Uint32( bg[selected_color]) );
+			SDL_Rect copy = DST;
+			SDL_BlitScaled( ANIMATION->frames[ FRAME ], NULL, window_surf, &copy );
+			clock_t now = clock();
+			if( now >= NFRAME ){
+				FRAME++;
+				if( FRAME >= ANIMATION->count ){
+					FRAME = 0;
+				}
+				NFRAME = now + ANIMATION->delays[ FRAME ];
+			}
+			SDL_UpdateWindowSurface( window );
+			update = 0;
 		}
 
 		if( update ){
@@ -654,7 +768,13 @@ int main(int argc, char *argv[]){
 			if( TEXTURE != NULL ){
 				SDL_SetRenderDrawColor( renderer, bg[selected_color].r, bg[selected_color].g, bg[selected_color].b, bg[selected_color].a );
 				SDL_RenderClear( renderer );
-				SDL_RenderCopy( renderer, TEXTURE, NULL, &DST );
+
+				if( angle_i != 0 || FLIP != SDL_FLIP_NONE ){
+					SDL_RenderCopyEx( renderer, TEXTURE, NULL, &DST, ANGLE, NULL, FLIP );
+				}
+				else{
+					SDL_RenderCopy( renderer, TEXTURE, NULL, &DST );
+				}
 			}
 			else if( SURFACE != NULL ){
 

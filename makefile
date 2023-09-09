@@ -1,6 +1,7 @@
 CC = gcc
 
-OBJS = main.c basics.c
+#vec2d.c primitives.c 
+OBJS = basics.c main.c 
 	
 ifeq ($(OS),Windows_NT) # Windows_NT is the identifier for all versions of Windows
 	DETECTED_OS := Windows
@@ -9,10 +10,10 @@ else
 endif
 
 ifeq ($(DETECTED_OS),Windows)
-	INCLUDE_PATHS = -IC:/SDL/SDL2-2.0.14/i686-w64-mingw32/include/SDL2
-	INCLUDE_PATHS += -IC:/SDL/SDL2_image-2.0.5/i686-w64-mingw32/include/SDL2
-	LIBRARY_PATHS = -LC:/SDL/SDL2-2.0.14/i686-w64-mingw32/lib
-	LIBRARY_PATHS += -LC:/SDL/SDL2_image-2.0.5/i686-w64-mingw32/lib
+	INCLUDE_PATHS = -IC:/SDL/SDL2-2.28.2/i686-w64-mingw32/include/SDL2
+	INCLUDE_PATHS += -IC:/SDL/SDL2_image-2.6.3/i686-w64-mingw32/include/SDL2
+	LIBRARY_PATHS = -LC:/SDL/SDL2-2.28.2/i686-w64-mingw32/lib
+	LIBRARY_PATHS += -LC:/SDL/SDL2_image-2.6.3/i686-w64-mingw32/lib
 
 	LINKER_FLAGS = -lmingw32 -lSDL2main -lSDL2 -lSDL2_image
 else

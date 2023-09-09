@@ -11,6 +11,13 @@ introscopia@protonmail.com
 > [MIDDLE Click&Drag] Pan around relative to initial mouse location.
 > [ H,J,K,L ] Pan around vim-style. (panning is reversed. You move the "camera", not the image)
 > [🡅/🡇 Arrow keys] pan up and down.
+> NUMPAD:
+	> [ 8, 2, 4, 6 ] Pan around. 
+	> [ 7, 9 ] rotate the image in increments of 90 degrees.
+	> [ 1, 3 ] next and previous image in the folder.
+	> [ 5, 0, +, - ] zoom in and out.
+	> [ / ] flip horizontally.
+	> [ * ] flip vertically.
 
 > [Mouse Wheel] Zoom in/out.
 > [I] Zoom in
