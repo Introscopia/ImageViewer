@@ -1,6 +1,4 @@
-README
-
-"ImageViewer" is an ultra-minimalistic image viewing program for Windows built with C and SDL2 by Introscopia in 2020.
+"ImageViewer" is an ultra-minimalistic image viewing program for Windows built with C and SDL2 by Introscopia in 2020, latest updade: 2023-09-09
 https://introscopia.github.io/
 introscopia@protonmail.com
 
