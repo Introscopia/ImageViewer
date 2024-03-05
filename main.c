@@ -71,6 +71,17 @@ int check_extension( char *filename ){
 	return 0;
 }
 
+void regularize_surface( SDL_Surface **S, SDL_Surface *T ){
+
+	if( (*S)->format->format != T->format->format ){
+		//puts("diff formats!! converting...");
+		SDL_Surface *temp = SDL_ConvertSurface( *S, T->format, 0 );
+		SDL_FreeSurface( *S );
+		*S = temp;
+	}
+}
+
+
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~O~~~~~~~~~~| M A I N |~~~~~~~~~~~O~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 int main(int argc, char *argv[]){
@@ -153,10 +164,12 @@ int main(int argc, char *argv[]){
 	double zoom = 1;
 	bool zoom_in = 0;
 	bool zoom_out = 0;
+	float zoomV = 0.25;
 	//clock_t zoom_t = 0;
 	//clock_t zoom_dt = lrint(0.1 * CLOCKS_PER_SEC); 
 
-	double panV = 3;
+	double panV = 9;
+	double panVF = 0.04;//vel factor for the mmpan
 	bool pan_up = 0;
 	bool pan_down = 0;
 	bool pan_left = 0;
@@ -178,6 +191,7 @@ int main(int argc, char *argv[]){
 
 	int load_image( char *path ){
 		//printf("%d, %s\n", argc, argv[1] );
+		printf("path: %s\n", path );
 
 		int EXT = check_extension( path );
 
@@ -192,7 +206,7 @@ int main(int argc, char *argv[]){
 			SURFACE = NULL;
 		}
 		if( ANIMATION != NULL ){
-			IMG_FreeAnimation( ANIMATION ); 
+			IMG_FreeAnimation( ANIMATION );
 			ANIMATION = NULL;
 			animating = 0;
 		}
@@ -214,11 +228,15 @@ int main(int argc, char *argv[]){
 				goto reload;
 			}
 			else{
+				//printf("good anim, %d frames\n", ANIMATION->count);
 				W = ANIMATION->w;
 				H = ANIMATION->h;
 				FRAME = 0;
 				NFRAME = clock() + ANIMATION->delays[0];
 				animating = 1;
+				for (int i = 0; i < ANIMATION->count; ++i ){
+					regularize_surface( ANIMATION->frames + i, window_surf );
+				}
 			}
 		}
 		else{
@@ -226,8 +244,8 @@ int main(int argc, char *argv[]){
 			TEXTURE = IMG_LoadTexture( renderer, path );
 		}
 		
-		if( TEXTURE == NULL ){
-			//puts("bad texture");
+		if( animating <= 0 && TEXTURE == NULL ){
+			//printf("bad texture: %s\n", SDL_GetError());
 			
 			SURFACE = IMG_Load( path );
 
@@ -238,18 +256,26 @@ int main(int argc, char *argv[]){
 				return 0;
 			}
 			else{
+				//puts("we surfin'");
+				regularize_surface( &SURFACE, window_surf );
 				W = SURFACE->w;
 				H = SURFACE->h;
+				if( W < 4000 && H < 4000 ){
+					TEXTURE = SDL_CreateTextureFromSurface( renderer, SURFACE );
+					SDL_FreeSurface( SURFACE ); 
+					SURFACE = NULL;
+					antialiasing = 0;
+				}
 			}
 		}
-		else{
+		
+		if( TEXTURE != NULL ){
 			SDL_QueryTexture( TEXTURE, NULL, NULL, &W, &H);
-		}
-
-		if( TEXTURE != NULL && antialiasing > 0 && (W < 200 || H < 200) ){
-			antialiasing = 0;
-			SDL_SetHintWithPriority( SDL_HINT_RENDER_SCALE_QUALITY, "0", SDL_HINT_OVERRIDE );
-			goto reload;
+			if( antialiasing > 0 && (W <= 256 || H <= 256) ){
+				antialiasing = 0;
+				SDL_SetHintWithPriority( SDL_HINT_RENDER_SCALE_QUALITY, "0", SDL_HINT_OVERRIDE );
+				goto reload;
+			}
 		}
 
 		sprintf( buffer, "%s   (%d × %d)", path + off, W, H );
@@ -435,23 +461,23 @@ int main(int argc, char *argv[]){
 						ANGLE = 0;
 						FLIP = SDL_FLIP_NONE;
 					}
-					else if( event.key.keysym.sym == '1' ){
-						tx = 0.5 * (width  - W);
-						ty = 0.5 * (height - H);
-						DST = (SDL_Rect){lrint(tx), lrint(ty), W, H};
-						zoom = 1;
-						zoom_i = 0;
+					else if( event.key.keysym.sym >= '1' && event.key.keysym.sym <= '9' ){
+						zoom = event.key.keysym.sym - '0';
+						zoom_i = logarithm( 1.1, zoom );
+						tx = 0.5 * ( width  - (zoom * W) );
+						ty = 0.5 * ( height - (zoom * H) );
+						DST = (SDL_Rect){lrint(tx), lrint(ty), zoom * W, zoom * H};	
 						fit = 0;
 						angle_i = 0;
 						ANGLE = 0;
 						FLIP = SDL_FLIP_NONE;
 					}
 					else if( event.key.keysym.sym == 'c' ){
-						selected_color++;
-						if( selected_color >= 5 ) selected_color = 0;
+						selected_color--;
+						if( selected_color < 0 ) selected_color = 4;
 					}
 					else if( event.key.keysym.sym == 'a' ){
-						puts("hi");
+						//puts("hi");
 						antialiasing++;
 						if( antialiasing > 2 ) antialiasing = 0;
 						char s [2];
@@ -660,7 +686,8 @@ int main(int argc, char *argv[]){
 						case SDL_WINDOWEVENT_SIZE_CHANGED:
 						case SDL_WINDOWEVENT_RESIZED     :
 						case SDL_WINDOWEVENT_MAXIMIZED   :
-						
+							
+							window_surf = SDL_GetWindowSurface( window );
 							SDL_GetWindowSize( window, &width, &height );
 							window_rect.w = width;
 							window_rect.h = height;
@@ -705,8 +732,8 @@ int main(int argc, char *argv[]){
 		}
 		if( mmpan ){
 
-			tx += 0.01 * (clickX - mouseX);
-			ty += 0.01 * (clickY - mouseY);
+			tx += panVF * (clickX - mouseX);
+			ty += panVF * (clickY - mouseY);
 			DST.x = lrint( tx );
 			DST.y = lrint( ty );
 
@@ -727,8 +754,8 @@ int main(int argc, char *argv[]){
 			//if( clock() - zoom_t > zoom_dt ){
 			double xrd = (cx - tx) / zoom;
 			double yrd = (cy - ty) / zoom;
-			if( zoom_in  ) zoom_i += 0.075;
-			if( zoom_out ) zoom_i -= 0.075;
+			if( zoom_in  ) zoom_i += zoomV;
+			if( zoom_out ) zoom_i -= zoomV;
 			zoom = pow( 1.1, zoom_i );
 			tx = cx - xrd * zoom;
 			ty = cy - yrd * zoom;
@@ -748,9 +775,12 @@ int main(int argc, char *argv[]){
 		}
 
 		if( animating ){
+
 			SDL_FillRect( window_surf, NULL, SDL_Color_to_Uint32( bg[selected_color]) );
 			SDL_Rect copy = DST;
 			SDL_BlitScaled( ANIMATION->frames[ FRAME ], NULL, window_surf, &copy );
+			//	SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "SDL_BlitScaled error: %s", SDL_GetError());
+			//}
 			clock_t now = clock();
 			if( now >= NFRAME ){
 				FRAME++;
@@ -778,7 +808,7 @@ int main(int argc, char *argv[]){
 			}
 			else if( SURFACE != NULL ){
 
-				SDL_FillRect( window_surf, NULL, SDL_Color_to_Uint32(bg[selected_color]) );
+				SDL_FillRect( window_surf, NULL, SDL_Color_to_Uint32( bg[selected_color]) );
 				SDL_Rect copy = DST;
 				SDL_BlitScaled( SURFACE, NULL, window_surf, &copy );
 			}
@@ -807,6 +837,8 @@ int main(int argc, char *argv[]){
 				SDL_UpdateWindowSurface( window );
 			}
 		}
+
+		SDL_framerateDelay( 16 );
 
 	}//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> / L O O P <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 

@@ -21,7 +21,7 @@ introscopia@protonmail.com
 > [I] Zoom in
 > [O] Zoom out
 > [CTRL + Click&Drag] select area to zoom into.
-> [1] Set zoom 1:1.
+> [1...9] to set zoom.
 > [spacebar] Fit image to window.
 
 > [A] to cycle through scale quality options:

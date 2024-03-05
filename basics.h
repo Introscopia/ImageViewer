@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
+#include <stdbool.h>
 #include <string.h>
 #include <stdint.h>
 
@@ -37,8 +38,6 @@
    #define bmask 0x00ff0000
    #define amask 0xff000000
 #endif
-
-typedef int bool;
 
 
 //#define remove_element( ptr, len, ind, siz ) for( int H = ind; H < *len; ++H )
@@ -123,5 +122,7 @@ char shifted_keys( char c );
 typedef struct {
     int i, j;
 } index2d;
+
+int SDL_framerateDelay( int frame_period );
 
 #endif

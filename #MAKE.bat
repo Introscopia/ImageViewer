@@ -1,2 +1,2 @@
-mingw32-make quick
+mingw32-make release
 cmd /k

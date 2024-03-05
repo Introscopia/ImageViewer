@@ -367,3 +367,19 @@ char shifted_keys( char c ){
 	char S [] = " !\"#$%&\"()*+<_>?)!@#$%^&*(::<+>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ{|}^_`ABCDEFGHIJKLMNOPQRSTUVWXYZ{|}~";
 	return S[ c - 32 ];
 }
+
+
+int SDL_framerateDelay( int frame_period ){
+    //we assume CLOCKS_PER_SEC is 1000, cause it always is...
+    static clock_t then = 0;
+    clock_t now = clock();
+    int elapsed = now - then;
+    int delay = frame_period - elapsed;
+    //printf("%d - (%d - %d) = %d\n", frame_period, now, then, delay );
+    if( delay > 0 ){
+    	SDL_Delay( delay );
+    	elapsed += delay;
+    }
+    then = clock();
+    return elapsed;
+}
