@@ -5,10 +5,11 @@
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
+/*
 #include <stdbool.h>
 #include <string.h>
 #include <stdint.h>
-
+*/
 #include <SDL.h>
 
 
@@ -58,9 +59,10 @@ double logarithm( double base, double x );
     }
     for (int i = 0; i < 7; ++i) printf("%d: %d, ", i+1, co[i] );
     puts(".");
-*/
+
 int random( int min, int max );
 double random_angle();
+*/
 
 double lerp(double start, double stop, double amt);
 
@@ -107,7 +109,7 @@ bool rect_overlap( SDL_FRect *A, SDL_FRect *B );
 bool intersecting_or_touching( SDL_Rect *A, SDL_Rect *B);
 SDL_Rect add_rects( SDL_Rect *A, SDL_Rect *B);
 //scale and translate A to fit inside B, centralized
-void fit_rect( SDL_Rect *A, SDL_Rect *B );
+void fit_rect( SDL_FRect *A, SDL_Rect *B );
 //void fit_rect_other???
 
 bool alphanumeric( char c );

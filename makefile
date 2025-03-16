@@ -1,7 +1,6 @@
 CC = gcc
 
-#vec2d.c primitives.c 
-OBJS = basics.c main.c 
+OBJS = basics.c imgview.c 
 	
 ifeq ($(OS),Windows_NT) # Windows_NT is the identifier for all versions of Windows
 	DETECTED_OS := Windows
@@ -10,15 +9,17 @@ else
 endif
 
 ifeq ($(DETECTED_OS),Windows)
-	INCLUDE_PATHS = -IC:/SDL/SDL2-2.28.2/i686-w64-mingw32/include/SDL2
-	INCLUDE_PATHS += -IC:/SDL/SDL2_image-2.6.3/i686-w64-mingw32/include/SDL2
-	LIBRARY_PATHS = -LC:/SDL/SDL2-2.28.2/i686-w64-mingw32/lib
-	LIBRARY_PATHS += -LC:/SDL/SDL2_image-2.6.3/i686-w64-mingw32/lib
+	INCLUDE_PATHS = -IC:/SDL/SDL3-3.2.4/x86_64-w64-mingw32/include/SDL3
+	INCLUDE_PATHS += -IC:/SDL/SDL3-3.2.4/x86_64-w64-mingw32/include/
+	INCLUDE_PATHS += -IC:/SDL/SDL3_image-3.2.4/x86_64-w64-mingw32/include/SDL3_image
 
-	LINKER_FLAGS = -lmingw32 -lSDL2main -lSDL2 -lSDL2_image
+	LIBRARY_PATHS = -LC:/SDL/SDL3-3.2.4/x86_64-w64-mingw32/lib
+	LIBRARY_PATHS += -LC:/SDL/SDL3_image-3.2.4/x86_64-w64-mingw32/lib
+
+	LINKER_FLAGS = -lmingw32 -lSDL3 -lSDL3_image
 else
-	INCLUDE_PATHS = -I/usr/include/SDL2
-	LINKER_FLAGS = -lm -lSDL2 -lSDL2_image
+	INCLUDE_PATHS = -I/usr/include/SDL3
+	LINKER_FLAGS = -lm -lSDL3 -lSDL3_image
 endif
 
 

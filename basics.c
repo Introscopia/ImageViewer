@@ -14,9 +14,9 @@ double sq( double a ){
 }
 
 double logarithm( double base, double x ){
-	return log2( x ) / log2( base );
+	return SDL_log10( x ) / SDL_log10( base );
 }
-
+/*
 int random( int min, int max ){
     return (rand() % (max-min)) + min;
 }
@@ -25,7 +25,7 @@ double random_angle(){
 	// RAND_MAX :    32767
 	return 6.283185 * ( rand() / 32767.0 );
 }
-
+*/
 double lerp(double start, double stop, double amt) {
     return start + (stop-start) * amt;
 }
@@ -35,14 +35,14 @@ double map(double value, double source_lo, double source_hi,  double dest_lo, do
 }
 
 double ellipticalMap(double value, double source_lo, double source_hi, double dest_lo, double dest_hi){
-  return dest_hi +((dest_lo-dest_hi)/abs(dest_lo-dest_hi))*sqrt((1-(sq(value-source_lo)/sq(source_hi-source_lo)))*sq(dest_hi-dest_lo));
+  return dest_hi +((dest_lo-dest_hi)/abs(dest_lo-dest_hi))*SDL_sqrt((1-(sq(value-source_lo)/sq(source_hi-source_lo)))*sq(dest_hi-dest_lo));
 }
 
 double sigmoidMap(double value, double source_lo, double source_hi, double dest_lo, double dest_hi){
-  return ( (dest_hi-dest_lo) * ( 1 / (1 + exp( -map( value, source_lo, source_hi, -6, 6 ) ) ) ) ) + dest_lo;
+  return ( (dest_hi-dest_lo) * ( 1 / (1 + SDL_exp( -map( value, source_lo, source_hi, -6, 6 ) ) ) ) ) + dest_lo;
 }
 double advSigmoidMap(double value, double source_lo, double source_hi, double Slo, double Shi, double dest_lo, double dest_hi){
-  return ( (dest_hi-dest_lo) * ( 1 / (1 + exp( -map( value, source_lo, source_hi, Slo, Shi ) ) ) ) ) + dest_lo;
+  return ( (dest_hi-dest_lo) * ( 1 / (1 + SDL_exp( -map( value, source_lo, source_hi, Slo, Shi ) ) ) ) ) + dest_lo;
 }
 
 int constrain( int a, int min, int max ){
@@ -75,9 +75,9 @@ double radians( double degrees ){
 
 double rectify_angle( double a ){
 	if( a < 0 ){
-		//printf("++ %f, %f, %f, %f.\n", a, abs(a), abs(a)/TWO_PI, ceil( abs(a) / TWO_PI ) );
+		//printf("++ %f, %f, %f, %f.\n", a, abs(a), abs(a)/TWO_PI, SDL_ceil( abs(a) / TWO_PI ) );
 		if( a >= -TWO_PI ) return TWO_PI + a;
-		else return (ceil( abs(a) / TWO_PI ) * TWO_PI) + a;
+		else return (SDL_ceil( abs(a) / TWO_PI ) * TWO_PI) + a;
 	}
 	else{
 		if( a < TWO_PI ) return a;
@@ -89,12 +89,12 @@ double rectify_angle( double a ){
 
 
 void strspl( char *string, const char *delimiters, char ***list, int *size ){
-	int ss = strlen( string );
-	*list = (char**) malloc( ceil(0.5*ss) * sizeof(char*) );
-	int sd = strlen( delimiters );
+	int ss = SDL_strlen( string );
+	*list = (char**) SDL_malloc( SDL_ceil(0.5*ss) * sizeof(char*) );
+	int sd = SDL_strlen( delimiters );
 	*size = 0;
 
-	bool *checks = (bool*) malloc( ss * sizeof(bool) );
+	bool *checks = (bool*) SDL_malloc( ss * sizeof(bool) );
 	for( int i = 0; i < ss; ++i ){
 		checks[i] = 0;
 		for (int j = 0; j < sd; ++j){
@@ -211,7 +211,7 @@ char *strtrim( char *string ){
 	return out;
 }
 void strtrim_trailingNL( char *string ){
-	int len = strlen( string );
+	int len = SDL_strlen( string );
 	for (int i = len; i >= 0 ; --i){
 		if( string[i] == '\n' ){
 			string[i] = '\0';
@@ -249,8 +249,8 @@ bool fseek_string( FILE *f, char *str ){
 }
 
 Uint16 *ascii_to_unicode( char *str ){
-	int len = strlen( str );
-	Uint16 *out = malloc( len * sizeof(Uint16) );
+	int len = SDL_strlen( str );
+	Uint16 *out = SDL_malloc( len * sizeof(Uint16) );
 	int c = 0;
 	for( int i = 0; str[i] != '\0'; ++i ){
 		if( (str[i] & 0x80) == 0 ){
@@ -279,10 +279,10 @@ Uint16 *ascii_to_unicode( char *str ){
 
 bool cursor_in_rect( SDL_Event *event, SDL_Rect *R ){
 	switch (event->type) {
-		case SDL_MOUSEBUTTONDOWN:
-		case SDL_MOUSEBUTTONUP:
+		case SDL_EVENT_MOUSE_BUTTON_DOWN:
+		case SDL_EVENT_MOUSE_BUTTON_UP:
 			return ( event->button.x > R->x && event->button.x < R->x + R->w ) && ( event->button.y > R->y && event->button.y < R->y + R->h );
-		case SDL_MOUSEMOTION:
+		case SDL_EVENT_MOUSE_MOTION:
 			return ( event->motion.x > R->x && event->motion.x < R->x + R->w ) && ( event->motion.y > R->y && event->motion.y < R->y + R->h );
 		default:
 			return 0;
@@ -311,18 +311,18 @@ SDL_Rect add_rects( SDL_Rect *A, SDL_Rect *B){
 	return out;
 }
 
-void fit_rect( SDL_Rect *A, SDL_Rect *B ){
+void fit_rect( SDL_FRect *A, SDL_Rect *B ){
 	float Ar = A->w / (float) A->h;
 	float Br = B->w / (float) B->h;
 	if( Ar > Br ){
-		int h = (int)( A->h * (B->w / (float) A->w) );
+		int h = A->h * (B->w / (float) A->w);
 		A->x = B->x;
 		A->y = B->y + ((B->h - h) / 2);
 		A->w = B->w;
 		A->h = h;
 	}
 	else {
-		int w = (int)( A->w * (B->h / (float) A->h) );
+		int w = A->w * (B->h / (float) A->h);
 		A->x = B->x + ((B->w - w) / 2);
 		A->y = B->y;
 		A->w = w;
