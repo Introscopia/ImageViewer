@@ -162,9 +162,8 @@ int strcchr( char *string, char C ){ // String Count character
 // sub-string
 char * substr( char *string, int start, int stop ){
 	char *sub = (char*) calloc( stop-start +1, sizeof(char) );
-	for (int i = start; i < stop; ++i){
-		sub[i-start] = string[i];
-	}
+	//for (int i = start; i < stop; ++i){ 	sub[i-start] = string[i]; }
+	memcpy( sub, string + start, stop-start );
 	sub[ stop-start ] = '\0';
 	return sub;
 }

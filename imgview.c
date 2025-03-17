@@ -33,7 +33,7 @@ int strrcmp( char *A, char *B ){
 }
 
 
-char* Win_to_SDL(const char* input) {
+void Win_to_UTF8(char *output, const char* input) {
 
 	int wideCharLength = MultiByteToWideChar(CP_UTF8, 0, input, -1, NULL, 0);
 
@@ -43,12 +43,12 @@ char* Win_to_SDL(const char* input) {
 
 	int utf8Length = WideCharToMultiByte(CP_UTF8, 0, wideCharStr, -1, NULL, 0, NULL, NULL);
 
-	char* utf8Str = malloc( utf8Length );
+	//char* utf8Str = malloc( utf8Length );
 
-	WideCharToMultiByte(CP_UTF8, 0, wideCharStr, -1, utf8Str, utf8Length, NULL, NULL);
+	WideCharToMultiByte(CP_UTF8, 0, wideCharStr, -1, output, utf8Length, NULL, NULL);
 
 	free(wideCharStr);
-	return utf8Str;
+	//return utf8Str;
 }
 
 char* Win_to_opendir(const char* input) {
@@ -71,7 +71,7 @@ char* Win_to_opendir(const char* input) {
 	return codePageStr;
 }
 
-char* opendir_to_UTF8(const char* input) {
+void CP_ACP_to_UTF8(char *output, const char* input) {
 	// from the system's code page (e.g., CP_ACP) to UTF-16 (wide characters)
 	int wideCharLength = MultiByteToWideChar(CP_ACP, 0, input, -1, NULL, 0);
 
@@ -84,12 +84,12 @@ char* opendir_to_UTF8(const char* input) {
 	//from UTF-16 to UTF-8
 	int utf8Length = WideCharToMultiByte(CP_UTF8, 0, wideCharStr, -1, NULL, 0, NULL, NULL);
 
-	char* utf8Str = (char*)malloc(utf8Length);
+	//char* utf8Str = (char*)malloc(utf8Length);
 
-	WideCharToMultiByte(CP_UTF8, 0, wideCharStr, -1, utf8Str, utf8Length, NULL, NULL);
+	WideCharToMultiByte(CP_UTF8, 0, wideCharStr, -1, output, utf8Length, NULL, NULL);
 
 	free(wideCharStr);
-	return utf8Str;
+	//return utf8Str;
 }
 
 int check_extension( char *filename ){
@@ -105,13 +105,13 @@ int check_extension( char *filename ){
 	return 0;
 }
 
-int currentDirLen = 0;
+int folderpath_len = 0;
 
 SDL_EnumerationResult enudir_callback(void *userdata, const char *dirname, const char *fname){
 
 	int dl = strlen( dirname );
-	if( dl > currentDirLen ){
-		sprintf( buffer, "%s%s", dirname + currentDirLen, fname );
+	if( dl > folderpath_len ){
+		sprintf( buffer, "%s%s", dirname + folderpath_len, fname );
 	}
 	else{
 		SDL_strlcpy( buffer, fname, bufflen );
@@ -145,27 +145,6 @@ void shuffle_str_list( const char **deck, int len ){
 		deck[ni] = temp;
 	}
 }
-
-
-void remove_item_from_string_list( char ***list, int X, int *len ){
-	*len -= 1;
-	for (int i = X; i < (*len); ++i){
-		(*list)[i] = (*list)[i+1];
-	}
-	*list = realloc( *list, (*len) * sizeof(char**) );
-}
-
-//Case Insensitive String Comparison
-int strcicmp(char const *a, char const *b){
-	for (;; a++, b++) {
-		int d = tolower((unsigned char)*a) - tolower((unsigned char)*b);
-		if ( d != 0 || !*a || !*b ){
-			return d;
-		}
-	}
-}
-
-
 
 
 void regularize_surface( SDL_Surface **S, SDL_Surface *T ){
@@ -276,8 +255,10 @@ int main(int argc, char *argv[]){
 	bool fullscreen = 0;
 	bool minimized = 0;
 
-	//char **directory_list = NULL;
-	//int list_len = 0;
+	
+	char *folderpath = NULL;
+	bool remote_operation = false;
+
 	str_vec directory_list;
 
 	int INDEX = 0;// of the present file in the list
@@ -287,8 +268,8 @@ int main(int argc, char *argv[]){
 	void load_folderlist( int depth ){
 
 		ok_vec_init( &directory_list );
-		if( !SDL_EnumerateDirectory( SDL_GetCurrentDirectory(), enudir_callback, &directory_list ) ){
-			SDL_Log("SDL_EnumerateDirectory error: %s", SDL_GetError());
+		if( !SDL_EnumerateDirectory( folderpath, enudir_callback, &directory_list ) ){
+			SDL_Log("SDL_EnumerateDirectory (1) error: %s", SDL_GetError());
 		}
 		depth -= 1;
 		while( depth > 0 ){
@@ -296,9 +277,9 @@ int main(int argc, char *argv[]){
 			ok_vec_foreach_rev( &directory_list, char *p ) {
 				int l = strlen(p);
 				if( p[l-1] == '\\' ){
-					sprintf( buffer, "%s%s", SDL_GetCurrentDirectory(), p );
+					sprintf( buffer, "%s%s", folderpath, p );
 					if( !SDL_EnumerateDirectory( buffer, enudir_callback, &directory_list ) ){
-						SDL_Log("SDL_EnumerateDirectory error: %s", SDL_GetError());
+						SDL_Log("SDL_EnumerateDirectory (2) error: %s", SDL_GetError());
 					}
 					ok_vec_remove( &directory_list, p );
 					free( p );
@@ -311,16 +292,25 @@ int main(int argc, char *argv[]){
 	}
 
 
-	int load_image( char *path ){
-		//printf("%d, %s\n", argc, argv[1] );
+	int load_image(){
+
+		char path [1024];
+
+		if( remote_operation ){
+			sprintf( path, "%s%s", folderpath, ok_vec_get( &directory_list, INDEX ) );
+		}else{
+			SDL_strlcpy( path, ok_vec_get( &directory_list, INDEX ), bufflen );
+		}
 		//printf("path: %s\n", path );
 
-		sprintf( buffer, "Loading \"%s\"...  [%d / %d]", path, INDEX, ok_vec_count( &directory_list ) );
+		//CP_ACP_to_UTF8( path, buffer ); // CP_ACP_to_UTF8( path );
+		//printf("loading path: %s\n", path );
+
+		//sprintf( buffer, "Loading \"%s\"...  [%d / %d]", path, INDEX, ok_vec_count( &directory_list ) );
 		SDL_SetWindowTitle( window, buffer );
 
-		char *path_ = opendir_to_UTF8( path );
 
-		int EXT = check_extension( path_ );
+		int EXT = check_extension( path );
 
 		if( !EXT ) return 0;
 
@@ -339,15 +329,15 @@ int main(int argc, char *argv[]){
 		animating = 0;
 
 		int off = 0;
-		for (int i = strlen( path_ ); i >=0 ; --i){
-			if( path_[i] == '\\' ){
+		for (int i = strlen( path ); i >=0 ; --i){
+			if( path[i] == '\\' ){
 				off = i+1;
 				break;
 			}
 		}
 
 		if( EXT == 4 || EXT == 9 ){//.gif or webp
-			ANIMATION = IMG_LoadAnimation( path_ );
+			ANIMATION = IMG_LoadAnimation( path );
 
 			if( ANIMATION == NULL ){
 				printf("bad anim, %s\n", SDL_GetError() );
@@ -374,17 +364,17 @@ int main(int argc, char *argv[]){
 		}
 		else{
 			loadtexture:
-			TEXTURE = IMG_LoadTexture( renderer, path_ );
+			TEXTURE = IMG_LoadTexture( renderer, path );
 		}
 		
 		if( animating <= 0 && TEXTURE == NULL ){
 			printf("bad texture: %s\n", SDL_GetError());
 			
-			SURFACE = IMG_Load( path_ );
+			SURFACE = IMG_Load( path );
 
 			if( SURFACE == NULL ){
 				puts( "bad surface" );
-				sprintf( buffer, "%s   ERROR: %s", path_ + off, SDL_GetError() );
+				sprintf( buffer, "%s   ERROR: %s", path + off, SDL_GetError() );
 				SDL_SetWindowTitle( window, buffer );
 				return 0;
 			}
@@ -444,40 +434,45 @@ int main(int argc, char *argv[]){
 
 
 
-	currentDirLen = strlen( SDL_GetCurrentDirectory() );
-
 	if( argc == 2 ){
 
 		//input_path = Win_to_opendir( argv[1] );
 		//printf("argv[1]: {%s}\nfor SDL: {%s}\nfor opendir: {%s}\n", argv[1], path_SDL, input_path );
-		
-		/*
-		int len = strlen( input_path );
+		//printf("argv[1]: %s\n", argv[1] );
+		//printf("SDL_GetCurrentDirectory(): %s\n", SDL_GetCurrentDirectory() );
+
+
+		int len = strlen( argv[1] );
 		for (int i = len; i >=0 ; --i){
-			if( input_path[i] == '\\' ){
-				folderpath_len = i;
+			if( argv[1][i] == '\\' ){
+				folderpath_len = i+1;
 				break;
 			}
 		}
-		folderpath = substr( input_path, 0, folderpath_len );
-		char *name = substr( input_path, folderpath_len+1, len );
-		*/
+		folderpath = substr( argv[1], 0, folderpath_len );
+		//char *name = substr( argv[1], folderpath_len+1, len );
+		//printf("folderpath: %s\n", folderpath );
+
+		if( SDL_strncmp( folderpath, SDL_GetCurrentDirectory(), len ) != 0 ){
+			remote_operation = true;
+		}
 		
 		load_folderlist( 1 );
 
 		//printf("argv[1]: %s\nSDL_GetCurrentDirectory(): %s\n",argv[1], SDL_GetCurrentDirectory() );
 
+		CP_ACP_to_UTF8( buffer, argv[1] );
+		//printf("buffer: %s\n", buffer );
 		// find where we are in the directory
-		for (int i = 0; i < ok_vec_count( &directory_list ); ++i){	
-			if( strrcmp( argv[1], ok_vec_get( &directory_list, i ) ) == 0 ){
+		for (int i = 0; i < ok_vec_count( &directory_list ); ++i){
+			//printf("[%d]: %s\n", i, ok_vec_get( &directory_list, i ) );
+			if( strrcmp( buffer, ok_vec_get( &directory_list, i ) ) == 0 ){
 				INDEX = i;
 				break;
 			}
 		}
 
-		load_image( argv[1] );
-
-		//free( input_path );
+		load_image();
 	}
 
 
@@ -862,7 +857,7 @@ int main(int argc, char *argv[]){
 
 				while( count < ok_vec_count( &directory_list ) ){
 					INDEX = cycle( INDEX, 0, ok_vec_count( &directory_list )-1 );
-					if( load_image( ok_vec_get( &directory_list, INDEX ) ) ){
+					if( load_image() ){
 						break;
 					}
 					INDEX += dir;
@@ -993,6 +988,7 @@ int main(int argc, char *argv[]){
 
 	}//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> / L O O P <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
+	free( folderpath );
 	destroy_str_vec( &directory_list );
 
 	//SDL_DestroySurface( icon );
