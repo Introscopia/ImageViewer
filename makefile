@@ -1,6 +1,6 @@
 CC = gcc
 
-OBJS = basics.c imgview.c 
+OBJS = imgview.c 
 	
 ifeq ($(OS),Windows_NT) # Windows_NT is the identifier for all versions of Windows
 	DETECTED_OS := Windows
