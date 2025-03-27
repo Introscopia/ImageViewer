@@ -166,7 +166,7 @@ void shuffle_str_list( const char **deck, int len ){
 
 void load_folderlist( str_vec *list, char *pfname, int depth ){
 
-	SDL_Log("load_folderlist( %s, %d );\n", pfname, depth );
+	//SDL_Log("load_folderlist( %s, %d );\n", pfname, depth );
 
 	ok_vec_init( list );
 	if( !SDL_EnumerateDirectory( folderpath, enudir_callback, list ) ){
@@ -180,9 +180,8 @@ void load_folderlist( str_vec *list, char *pfname, int depth ){
 		ok_vec_foreach_rev( list, char *p ) {
 			size_t l = SDL_strlen(p);
 			if( p[l-1] == '\\' ){
-				SDL_Log( "new subfolder: %s\n", p );
+				//SDL_Log( "new subfolder: %s\n", p );
 				SDL_snprintf( buffer, bufflen, "%s%s", folderpath, p );
-				SDL_Log( "buffer: %s", buffer );
 				if( !SDL_EnumerateDirectory( buffer, enudir_callback, list ) ){
 					SDL_Log("SDL_EnumerateDirectory (2) error: %s", SDL_GetError());
 					SDL_Log(">{%s}", buffer );
@@ -689,7 +688,7 @@ int main(int argc, char *argv[]){
 			}
 		}
 		folderpath = substr( pfname, 0, folderpath_len );
-		SDL_Log("folderpath: %s\n", folderpath );
+		//SDL_Log("folderpath: %s\n", folderpath );
 
 		if( SDL_strncmp( folderpath, SDL_GetCurrentDirectory(), len ) != 0 ){
 			//SDL_Log( "REMOTE OPERATION!!" );
