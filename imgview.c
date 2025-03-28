@@ -14,6 +14,11 @@ Sint64 max_T_size;
 #define bufflen 1024
 char buffer [ bufflen ];
 
+typedef struct ok_vec_of(const char *) str_vec;
+
+
+
+
 void destroy_str_vec( str_vec *v ){
 
 	ok_vec_foreach_rev( v, char *str ) {

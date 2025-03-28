@@ -1756,22 +1756,6 @@ OK_LIB_API void _ok_queue_deinit(struct _ok_queue *queue, size_t value_size,
 
 
 
-//ADDED BY INTROSCOPIA
-
-typedef struct ok_map_of(const char*, int   ) map_str_int;
-typedef struct ok_map_of(const char*, char  ) map_str_char; 
-typedef struct ok_map_of(const char*, void* ) map_str_vptr;
-typedef struct ok_map_of(        int, char* ) map_int_str;
-typedef struct ok_map_of(       char, int   ) map_char_int;
-typedef struct ok_map_of(        int, int   ) map_int_int;
-
-typedef struct ok_vec_of(int) int_vec;
-typedef struct ok_vec_of(const char *) str_vec;
-
-//ADDED BY INTROSCOPIA
-
-
-
 
 #if defined(__GNUC__)
 #  pragma GCC diagnostic pop
