@@ -4,3 +4,6 @@ icon.png
 ImageViewer icon.xcf
 ImageViewer.exe
 ImageViewer.zip
+\#MAKE.bat
+SDL3.dll
+SDL3_image.dll
