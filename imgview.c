@@ -127,7 +127,7 @@ bool fit = false;
 bool animating = false;
 int tasking = 0;
 bool enable_blur = true;
-float blur_zoom_threshhold = 0.5;
+float blur_zoom_threshhold = 0.18;
 
 
 
@@ -1199,16 +1199,18 @@ int main(int argc, char *argv[]){
 							}
 							break;
 
-						case SDLK_DELETE && SHIFT:{
-							char path [256];
-							SDL_RemovePath( ok_vec_get( &directory_list, INDEX ) );
-							//remove_item_from_string_list( &directory_list, INDEX, &list_len );
-							ok_vec_remove_at( &directory_list, INDEX );
-							//destroy_Image( IMAGES+0 );
-							//INDEX++;
-							psel--;
-							dir = 1;
-							} break;
+						case SDLK_DELETE:
+							if( SHIFT ){
+								char path [256];
+								SDL_RemovePath( ok_vec_get( &directory_list, INDEX ) );
+								//remove_item_from_string_list( &directory_list, INDEX, &list_len );
+								ok_vec_remove_at( &directory_list, INDEX );
+								//destroy_Image( IMAGES+0 );
+								//INDEX++;
+								psel--;
+								dir = 1;
+							}
+							break;
 					}
 					update = 1;
 
@@ -1456,6 +1458,7 @@ int main(int argc, char *argv[]){
 								cancel_and_destroy_task( IMAGES[i].U.B.task );
 								IMAGES[i].U.B.task = NULL;
 								tasking -= 1;
+								TEX = IMAGES[i].U.B.SCALEDnBLURRED;
 							}
 							else TEX =  IMAGES[i].U.B.ORIGINAL;
 						}
