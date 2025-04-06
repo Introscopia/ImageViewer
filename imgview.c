@@ -90,8 +90,8 @@ void CP_ACP_to_UTF8(char *output, const char* input) {
 }
 
 int check_extension( char *filename ){
-	//                           1       2       3       4       5      6        7       8      9
-	const char exts [][5] = { ".png", ".jpg", "jpeg", ".gif", ".tif", "tiff", ".ico", ".bmp", "webp" };
+	//                           1       2       3       4       5      6        7       8      9       10
+	const char exts [][6] = { ".png", ".jpg", "jpeg", ".gif", ".tif", "tiff", ".ico", ".bmp", "webp", ".svg" };
 
 	size_t len = SDL_strlen( filename );
 	for (int i = 0; i < 9; ++i ){
@@ -124,7 +124,12 @@ bool remote_operation = false;
 
 int antialiasing = SDL_SCALEMODE_LINEAR;
 bool fit = false;
-bool animating = 0;
+bool animating = false;
+int tasking = 0;
+bool enable_blur = true;
+float blur_zoom_threshhold = 0.5;
+
+
 
 SDL_EnumerationResult enudir_callback(void *userdata, const char *dirname, const char *fname){
 
@@ -274,6 +279,198 @@ void fit_rect( SDL_FRect *A, SDL_Rect *B ){
 
 
 
+// Gaussian function for weights
+static inline float gaussian(float x, float sigma) {
+    return SDL_expf(-(x * x) / (2.0f * sigma * sigma)) / (SDL_sqrtf(2 * SDL_PI_F) * sigma);
+}
+
+SDL_Surface* load_scale_n_blur( const char* filepath, int target_w, int target_h, float blur){
+    // Load image
+    SDL_Surface* original = IMG_Load(filepath);
+    if (!original) {
+        SDL_Log("Failed to load image: %s", SDL_GetError());
+        return NULL;
+    }
+
+    SDL_Surface* converted = SDL_ConvertSurface(original, SDL_PIXELFORMAT_RGBA32);
+    SDL_DestroySurface(original);
+    if (!converted) {
+        SDL_Log("Failed to convert surface: %s", SDL_GetError());
+        return NULL;
+    }
+
+    SDL_FRect crct = (SDL_FRect){0,0,converted->w, converted->h};
+    SDL_Rect trct = (SDL_Rect){0,0,target_w, target_h};
+    fit_rect( &crct, &trct );
+    target_w = crct.w;
+    target_h = crct.h;
+
+    // Create target surface
+    SDL_Surface* output = SDL_CreateSurface(target_w, target_h, converted->format);
+    if (!output) {
+        SDL_Log("Failed to create surface: %s", SDL_GetError());
+        SDL_DestroySurface(converted);
+        return NULL;
+    }
+    
+    float scale = (float)converted->w / target_w;
+    float sigma = scale * 0.5f;
+    int radius = SDL_ceilf(sigma * blur);
+    int lens_len = (2 * radius + 1) * (2 * radius + 1);
+    
+    float* lens = SDL_malloc( lens_len * sizeof(float) );
+    float sum = 0.0f;
+    
+    for (int y = -radius; y <= radius; y++) {
+        for (int x = -radius; x <= radius; x++) {
+            float dist = SDL_sqrtf(x*x + y*y);
+            float weight = gaussian(dist, sigma);
+            lens[(y + radius) * (2 * radius + 1) + (x + radius)] = weight;
+            sum += weight;
+        }
+    }
+    
+    // Normalize
+    sum = 1.0 / sum;
+    for (int i = 0; i < lens_len; i++) {
+        lens[i] *= sum;
+    }
+
+    SDL_PixelFormatDetails *deets = SDL_GetPixelFormatDetails(output->format);
+
+    SDL_LockSurface(converted);
+    SDL_LockSurface(output);
+
+    Uint32* src_pixels = (Uint32*)converted->pixels;
+    Uint32* dst_pixels = (Uint32*)output->pixels;
+
+    for (int dst_y = 0; dst_y < target_h; dst_y++) {
+        for (int dst_x = 0; dst_x < target_w; dst_x++) {
+            float src_center_x = dst_x * scale;
+            float src_center_y = dst_y * scale;
+            
+            float r = 0.0f, g = 0.0f, b = 0.0f, a = 0.0f;
+            
+            for (int ky = -radius; ky <= radius; ky++) {
+                for (int kx = -radius; kx <= radius; kx++) {
+                    int src_x = (int)(src_center_x + kx);
+                    int src_y = (int)(src_center_y + ky);
+                    
+                    src_x = SDL_clamp(src_x, 0, converted->w - 1);
+                    src_y = SDL_clamp(src_y, 0, converted->h - 1);
+                    
+                    Uint32 pixel = src_pixels[src_y * converted->w + src_x];
+                    SDL_Color color;
+                    SDL_GetRGBA(pixel, deets, NULL, &color.r, &color.g, &color.b, &color.a);
+                    
+                    float weight = lens[(ky + radius) * (2 * radius + 1) + (kx + radius)];
+                    r += color.r * weight;
+                    g += color.g * weight;
+                    b += color.b * weight;
+                    a += color.a * weight;
+                }
+            }
+            
+            dst_pixels[dst_y * target_w + dst_x] = SDL_MapRGBA(
+                deets, NULL,
+                (uint8_t)SDL_clamp(r, 0.0f, 255.0f),
+                (uint8_t)SDL_clamp(g, 0.0f, 255.0f),
+                (uint8_t)SDL_clamp(b, 0.0f, 255.0f),
+                (uint8_t)SDL_clamp(a, 0.0f, 255.0f)
+            );
+        }
+    }
+
+    SDL_UnlockSurface(converted);
+    SDL_UnlockSurface(output);
+    SDL_free(lens);
+
+    // Cleanup
+    SDL_DestroySurface(converted);
+
+    return output;
+}
+
+
+typedef struct {
+    SDL_Mutex* lock;
+    SDL_Thread* thread;
+    char filepath[1024];
+    int target_w, target_h;
+    float blur_factor;
+    SDL_Surface* output;
+    int progress;
+    int completed;
+    int cancel_requested;
+} BigImg_LSnB_Task;
+
+int LSnB_thread(void* data) {
+    BigImg_LSnB_Task* task = (BigImg_LSnB_Task*)data;
+    
+    SDL_Surface* surf = load_scale_n_blur( task->filepath, 
+                                           task->target_w, task->target_h, 
+                                           task->blur_factor );
+    
+    SDL_LockMutex( task->lock );
+    if( task->cancel_requested ){
+    	if (surf) {
+	        SDL_DestroySurface(surf);
+	    }
+	}else{
+        task->output = surf;
+        task->completed = 1;
+    }
+    SDL_UnlockMutex( task->lock );
+    
+    return 0;
+}
+
+BigImg_LSnB_Task* launch_LSnB_thread( const char* filepath, int w, int h, float blur) {
+
+    BigImg_LSnB_Task* task = SDL_calloc( 1, sizeof(BigImg_LSnB_Task) );
+    *task = (BigImg_LSnB_Task){
+        .lock = SDL_CreateMutex(),
+        .target_w = w,
+        .target_h = h,
+        .blur_factor = blur
+    };
+    SDL_strlcpy(task->filepath, filepath, sizeof(task->filepath));
+    
+    task->thread = SDL_CreateThread( LSnB_thread, "load_scale_n_blur_big_image", task );
+    return task;
+}
+
+SDL_Texture* check_LSnB_Task( SDL_Renderer *R, BigImg_LSnB_Task* task ){
+    SDL_LockMutex( task->lock );
+    SDL_Texture* result = NULL;
+    if (task->completed) {
+		result = SDL_CreateTextureFromSurface( R, task->output );
+		if (!result) {
+		    SDL_Log("Failed to create texture: %s", SDL_GetError());
+		}
+		SDL_DestroySurface( task->output );
+        task->output = NULL;
+        task->completed = 0;
+    }
+    SDL_UnlockMutex(task->lock);
+    return result;
+}
+
+void cancel_and_destroy_task( BigImg_LSnB_Task* task ){
+    SDL_LockMutex( task->lock );
+    task->cancel_requested = 1;
+    if( task->output ){
+        SDL_DestroySurface( task->output );
+        task->output = NULL;
+    }
+    SDL_UnlockMutex( task->lock );
+    
+    SDL_WaitThread( task->thread, NULL );
+    SDL_DestroyMutex( task->lock );
+    SDL_free( task );
+}
+
+
 
 typedef struct image_struct{
 
@@ -282,6 +479,12 @@ typedef struct image_struct{
 	union{
 
 		SDL_Texture *TEXTURE;
+
+		struct {
+			SDL_Texture *ORIGINAL;
+			SDL_Texture *SCALEDnBLURRED;
+			BigImg_LSnB_Task *task;
+		} B;// Big image
 
 		struct {
 			SDL_Texture **TEXTURES;
@@ -296,7 +499,7 @@ typedef struct image_struct{
 
 } Image;
 
-enum image_type { INVALID = 0, STATIC, ANIMATION };
+enum image_type { INVALID = 0, SIMPLE, BIG, ANIMATION };
 
 void process_animation( Image *img, IMG_Animation *ANIM ){
 	img->type = ANIMATION;
@@ -324,9 +527,17 @@ void animation_tick( Image *img ){
 void destroy_Image( Image *img ){
 	switch( img->type ){
 
-		case STATIC:
+		case SIMPLE:
 			SDL_DestroyTexture( img->U.TEXTURE );
 			img->U.TEXTURE = NULL;
+			break;
+
+		case BIG:
+			SDL_DestroyTexture( img->U.B.ORIGINAL );
+			SDL_DestroyTexture( img->U.B.SCALEDnBLURRED );
+			if( img->U.B.task ){
+				cancel_and_destroy_task( img->U.B.task );
+			}
 			break;
 
 		case ANIMATION:
@@ -489,7 +700,7 @@ int load_image( char *path, Image *out ){
 		else{
 			if( ANIM->count == 1 ){
 				out->U.TEXTURE = SDL_CreateTextureFromSurface( R,  ANIM->frames[0] );
-				out->type = STATIC;
+				out->type = SIMPLE;
 			}
 			else{
 				SDL_Log( "good anim, %d frames\n", ANIM->count );
@@ -499,13 +710,16 @@ int load_image( char *path, Image *out ){
 			IMG_FreeAnimation( ANIM );
 		}
 	}
+	else if( EXT == 10 ){//.svg
+
+	}
 	else{
 		loadtexture:
 		out->U.TEXTURE = IMG_LoadTexture( R, path );
-		out->type = STATIC;
+		out->type = SIMPLE;
 	}
 
-	if( out->type == INVALID || (out->type == STATIC && out->U.TEXTURE == NULL) ){
+	if( out->type == INVALID || (out->type == SIMPLE && out->U.TEXTURE == NULL) ){
 		SDL_Log("bad texture: %s\n", SDL_GetError());
 		
 		SDL_Surface *SURF = IMG_Load( path );
@@ -542,7 +756,7 @@ int load_image( char *path, Image *out ){
 				for (int j = 0; j < gny; ++j ){
 					for (int i = 0; i < gnx; ++i ){
 						SDL_BlitSurface( SURF, &src, bufsurf, NULL );
-						IMAGES[I].type = STATIC;
+						IMAGES[I].type = SIMPLE;
 						IMAGES[I].U.TEXTURE = SDL_CreateTextureFromSurface( R, bufsurf );
 						IMAGES[I].RCT.x = src.x;
 						IMAGES[I].RCT.y = src.y;
@@ -557,12 +771,12 @@ int load_image( char *path, Image *out ){
 			else{*/
 
 			out->U.TEXTURE = SDL_CreateTextureFromSurface( R, SURF );
-
+			out->type = SIMPLE;
 			SDL_DestroySurface( SURF );
 		}
 	}
 	
-	if( out->type == STATIC ){
+	if( out->type == SIMPLE ){
 		float fw, fh;
 		SDL_GetTextureSize( out->U.TEXTURE, &fw, &fh );
 		out->RCT = (SDL_Rect){ 0, 0, fw, fh };
@@ -570,6 +784,16 @@ int load_image( char *path, Image *out ){
 		if( antialiasing > 0 && (out->RCT.w <= 256 || out->RCT.h <= 256) ){
 			antialiasing = SDL_SCALEMODE_NEAREST;//SDL_SCALEMODE_PIXELART;
 			SDL_SetTextureScaleMode( out->U.TEXTURE, antialiasing );
+		}
+
+		if( fw > width || fh > height ){
+			out->type = BIG;
+			out->U.B.SCALEDnBLURRED = NULL;
+			//float xs = width / fw;
+			//float ys = height / fh;
+			//out->U.B.zoom_threshhold =  //SDL_min( xs, ys );
+			out->U.B.task = launch_LSnB_thread( path, width, height, 1.25 );
+			tasking += 1;
 		}
 	}
 
@@ -763,175 +987,228 @@ int main(int argc, char *argv[]){
 					break;
 				case SDL_EVENT_KEY_DOWN:
 
-						 if( event.key.key == SDLK_LCTRL  || event.key.key == SDLK_RCTRL  ) CTRL  = 1;
-					else if( event.key.key == SDLK_LSHIFT || event.key.key == SDLK_RSHIFT ) SHIFT = 1;
+					switch( event.key.key ){
+						case SDLK_LCTRL:
+						case SDLK_RCTRL:
+							CTRL  = 1;
+							break;
+						case SDLK_LSHIFT:
+						case SDLK_RSHIFT:
+							SHIFT = 1;
+							break;
 
-					else if( event.key.key == 'h' ) pan_left = 1; 
-					else if( event.key.key == 'j' || event.key.key == SDLK_DOWN ) pan_down = 1; 
-					else if( event.key.key == 'k' || event.key.key == SDLK_UP   ) pan_up = 1;   
-					else if( event.key.key == 'l' ) pan_right = 1;
+						case 'h':
+						case SDLK_KP_4:
+							pan_left = 1;
+							break;
+						case 'j':
+						case SDLK_DOWN:
+						case SDLK_KP_2:
+							pan_down = 1;
+							break;
+						case 'k':
+						case SDLK_UP:
+						case SDLK_KP_8:
+							pan_up = 1;
+							break;
+						case 'l':
+						case SDLK_KP_6:
+							pan_right = 1;
+							break;
 
-					else if( event.key.key == 'i' ) zoom_in = 1;
-					else if( event.key.key == 'o' ) zoom_out = 1;
-
-					else if( event.key.key == SDLK_KP_PLUS ) zoom_in = 1;
-					else if( event.key.key == SDLK_KP_MINUS ) zoom_out = 1;
-
-					else if( event.key.key == SDLK_KP_5 ) zoom_in = 1;
-					else if( event.key.key == SDLK_KP_0 ) zoom_out = 1;
-
-					else if( event.key.key == SDLK_KP_2 ) pan_down = 1;
-					else if( event.key.key == SDLK_KP_4 ) pan_left = 1; 
-					else if( event.key.key == SDLK_KP_6 ) pan_right = 1;
-					else if( event.key.key == SDLK_KP_8 ) pan_up = 1;
+						case 'i':
+						case SDLK_KP_5:
+						case SDLK_KP_PLUS:
+							zoom_in = 1; 
+							break;
+						case 'o':
+						case SDLK_KP_0:
+						case SDLK_KP_MINUS:
+							zoom_out = 1;
+							break;
+					}
 					update = 1;
 
 					break;
 				case SDL_EVENT_KEY_UP:;
 
-						 if( event.key.key == SDLK_LCTRL  || event.key.key == SDLK_RCTRL  ) CTRL  = 0;
-					else if( event.key.key == SDLK_LSHIFT || event.key.key == SDLK_RSHIFT ) SHIFT = 0;
+					switch( event.key.key ){
+						case SDLK_LCTRL:
+						case SDLK_RCTRL:
+							CTRL  = 0;
+							break;
 
-					else if( event.key.key == SDLK_KP_7 ) rotate_ccw = 1;
-					else if( event.key.key == SDLK_KP_9 ) rotate_cw = 1;
-					else if( event.key.key == SDLK_KP_DIVIDE ){
-						if( FLIP & SDL_FLIP_HORIZONTAL ){
-							FLIP &= ~SDL_FLIP_HORIZONTAL;
-						}
-						else FLIP |= SDL_FLIP_HORIZONTAL;
-					}
-					else if( event.key.key == SDLK_KP_MULTIPLY ){
-						if( FLIP & SDL_FLIP_VERTICAL ){
-							FLIP &= ~SDL_FLIP_VERTICAL;
-						}
-						else FLIP |= SDL_FLIP_VERTICAL;
-					}
+						case SDLK_LSHIFT:
+						case SDLK_RSHIFT:
+							SHIFT = 0;
+							break;
 
-					else if( event.key.key == SDLK_LEFT || event.key.key == SDLK_KP_1 ){
-						dir = -1; psel -= 1;
-					} 
-					else if( event.key.key == SDLK_RIGHT || event.key.key == SDLK_KP_3 ){
-						dir =  1; psel -= 1;
-					}
-
-					else if( event.key.key == 'h' ) pan_left = 0;
-					else if( event.key.key == 'j' || event.key.key == SDLK_DOWN ) pan_down = 0;
-					else if( event.key.key == 'k' || event.key.key == SDLK_UP   ) pan_up = 0;
-					else if( event.key.key == 'l' ) pan_right = 0;
-
-					else if( event.key.key == 'i' ) zoom_in = 0; 
-					else if( event.key.key == 'o' ) zoom_out = 0;
-
-					else if( event.key.key == SDLK_KP_PLUS ) zoom_in = 0;
-					else if( event.key.key == SDLK_KP_MINUS ) zoom_out = 0;
-
-					else if( event.key.key == SDLK_KP_5 ) zoom_in = 0;
-					else if( event.key.key == SDLK_KP_0 ) zoom_out = 0;
-
-					else if( event.key.key == SDLK_KP_2 ) pan_down = 0;
-					else if( event.key.key == SDLK_KP_4 ) pan_left = 0; 
-					else if( event.key.key == SDLK_KP_6 ) pan_right = 0;
-					else if( event.key.key == SDLK_KP_8 ) pan_up = 0;
-
-					else if( event.key.key == ' ' ){//spacebar
-						if( IMAGES_N == 1 ){
-							calc_transform( &T, &(IMAGES[0].RCT), 2 );
-						} else {
-							SDL_Rect ALL = (SDL_Rect){ 0, 0, W, H };
-							calc_transform( &T, &ALL, 2 );
-						}
-						angle_i = 0;
-						ANGLE = 0;
-						FLIP = SDL_FLIP_NONE;
-					}
-					else if( event.key.key >= '1' && event.key.key <= '9' ){
-						T.scale = event.key.key - '0';
-						T.scale_i = logarithm( 1.1, T.scale );
-						T.tx = 0.5 * ( width  - (T.scale * W) );
-						T.ty = 0.5 * ( height - (T.scale * H) );
-						fit = 0;
-						angle_i = 0;
-						ANGLE = 0;
-						FLIP = SDL_FLIP_NONE;
-					}
-					else if( event.key.key == 'c' ){
-						sel_bg--;
-						if( sel_bg < 0 ) sel_bg = 4;
-					}
-					else if( event.key.key == 'a' ){
-						antialiasing++;
-						if( antialiasing > 1 ) antialiasing = 0;
-
-						for (int i = 0; i < IMAGES_N; ++i ){
-							SDL_SetTextureScaleMode( IMAGES[i].U.TEXTURE, antialiasing );
-						}
-						
-						/**SDL_SCALEMODE_NEAREST,  < nearest pixel sampling */
-					    /**SDL_SCALEMODE_LINEAR,   < linear filtering */
-					    /**SDL_SCALEMODE_PIXELART  < nearest pixel sampling with improved scaling for pixel art */
-					}
-					else if( event.key.key == 's' ){
-						char pfname [512];
-						SDL_strlcpy( pfname, ok_vec_get( &directory_list, INDEX ), 512 );
-
-						shuffle_str_list( ok_vec_begin(&directory_list), ok_vec_count(&directory_list) );
-
-						// find where we are in the list
-						for (int i = 0; i < ok_vec_count( &directory_list ); ++i){	
-							if( strrcmp( pfname, ok_vec_get( &directory_list, i ) ) == 0 ){
-								INDEX = i;
-								break;
+						case SDLK_KP_7: rotate_ccw = 1; break;
+						case SDLK_KP_9: rotate_cw = 1; break;
+						case SDLK_KP_DIVIDE:
+							if( FLIP & SDL_FLIP_HORIZONTAL ){
+								FLIP &= ~SDL_FLIP_HORIZONTAL;
 							}
-						}
-					}
-					else if( event.key.key == SDLK_F5 ){
+							else FLIP |= SDL_FLIP_HORIZONTAL;
+							break;
+						case SDLK_KP_MULTIPLY:
+							if( FLIP & SDL_FLIP_VERTICAL ){
+								FLIP &= ~SDL_FLIP_VERTICAL;
+							}
+							else FLIP |= SDL_FLIP_VERTICAL;
+							break;
 
-						psel = -1;
-						char pfname [512];
-						SDL_strlcpy( pfname, ok_vec_get( &directory_list, INDEX ), 512 );
+						case SDLK_LEFT:
+						case SDLK_KP_1:
+							dir = -1; psel -= 1;
+							break; 
+						case SDLK_RIGHT:
+						case SDLK_KP_3:
+							dir =  1; psel -= 1;
+							break;
 
-						destroy_str_vec( &directory_list );
-						load_folderlist( &directory_list, pfname, 1 );
-					}
-					else if( event.key.key == SDLK_F6 ){
+						case 'h':
+						case SDLK_KP_4:
+							pan_left = 0;
+							break;
+						case 'j':
+						case SDLK_DOWN:
+						case SDLK_KP_2:
+							pan_down = 0;
+							break;
+						case 'k':
+						case SDLK_UP:
+						case SDLK_KP_8:
+							pan_up = 0;
+							break;
+						case 'l':
+						case SDLK_KP_6:
+							pan_right = 0;
+							break;
 
-						//psel = -1;
-						char pfname [512];
-						SDL_strlcpy( pfname, ok_vec_get( &directory_list, INDEX ), 512 );
+						case 'i':
+						case SDLK_KP_5:
+						case SDLK_KP_PLUS:
+							zoom_in = 0; 
+							break;
+						case 'o':
+						case SDLK_KP_0:
+						case SDLK_KP_MINUS:
+							zoom_out = 0;
+							break;
 
-						destroy_str_vec( &directory_list );
-						load_folderlist( &directory_list, pfname, 9999 );
+						case SDLK_SPACE:// FIT to WINDOW
+							if( IMAGES_N == 1 ){
+								calc_transform( &T, &(IMAGES[0].RCT), 2 );
+							} else {
+								SDL_Rect ALL = (SDL_Rect){ 0, 0, W, H };
+								calc_transform( &T, &ALL, 2 );
+							}
+							angle_i = 0;
+							ANGLE = 0;
+							FLIP = SDL_FLIP_NONE;
+							break;
 
-						SWT_img();
-					}
-					else if( event.key.key == SDLK_F11 ){
-						if( fullscreen ){
-							SDL_SetWindowFullscreen( window, false );
-							fullscreen = 0;
-						}
-						else{
-							//SDL_SetWindowFullscreen( window, SDL_WINDOW_FULLSCREEN_DESKTOP );
-							SDL_SetWindowFullscreen( window, true );
-							SDL_SetWindowFullscreenMode( window,  NULL );
-							fullscreen = 1;
-						}
-					}
-					else if( event.key.key == SDLK_ESCAPE ){
-						if( fullscreen ){
-							SDL_SetWindowFullscreen( window, 0 );
-							//SDL_MaximizeWindow( window );
-							fullscreen = 0;
-						}
-					}
-					else if( event.key.key == SDLK_DELETE && SHIFT ){
-						char path [256];
-						SDL_RemovePath( ok_vec_get( &directory_list, INDEX ) );
-						//remove_item_from_string_list( &directory_list, INDEX, &list_len );
-						ok_vec_remove_at( &directory_list, INDEX );
-						//destroy_Image( IMAGES+0 );
-						//INDEX++;
-						psel--;
-						dir = 1;
+						case SDLK_0 ... SDLK_9: // SET ZOOM
+							T.scale = event.key.key - '0';
+							T.scale_i = logarithm( 1.1, T.scale );
+							T.tx = 0.5 * ( width  - (T.scale * W) );
+							T.ty = 0.5 * ( height - (T.scale * H) );
+							fit = 0;
+							angle_i = 0;
+							ANGLE = 0;
+							FLIP = SDL_FLIP_NONE;
+							break;
+
+						case 'c':// BACKGROUND COLOR
+							sel_bg--;
+							if( sel_bg < 0 ) sel_bg = 4;
+							break;
+
+						case 'a':// ANTI_ALIASING
+							antialiasing++;
+							if( antialiasing > 1 ) antialiasing = 0;
+
+							for (int i = 0; i < IMAGES_N; ++i ){
+								SDL_SetTextureScaleMode( IMAGES[i].U.TEXTURE, antialiasing );
+							}
+							/**SDL_SCALEMODE_NEAREST,  < nearest pixel sampling */
+						    /**SDL_SCALEMODE_LINEAR,   < linear filtering */
+						    /**SDL_SCALEMODE_PIXELART  < nearest pixel sampling with improved scaling for pixel art */
+							break;
+
+						case 'b':// BLUR
+							enable_blur = !enable_blur;
+							break;
+
+						case 's':{// SHUFFLE LIST
+							char pfname [512];
+							SDL_strlcpy( pfname, ok_vec_get( &directory_list, INDEX ), 512 );
+
+							shuffle_str_list( ok_vec_begin(&directory_list), ok_vec_count(&directory_list) );
+
+							// find where we are in the list
+							for (int i = 0; i < ok_vec_count( &directory_list ); ++i){	
+								if( strrcmp( pfname, ok_vec_get( &directory_list, i ) ) == 0 ){
+									INDEX = i;
+									break;
+								}
+							}
+							} break;
+
+						case SDLK_F5:{
+
+							psel = -1;
+							char pfname [512];
+							SDL_strlcpy( pfname, ok_vec_get( &directory_list, INDEX ), 512 );
+
+							destroy_str_vec( &directory_list );
+							load_folderlist( &directory_list, pfname, 1 );
+							} break;
+
+						case SDLK_F6:{
+
+							//psel = -1;
+							char pfname [512];
+							SDL_strlcpy( pfname, ok_vec_get( &directory_list, INDEX ), 512 );
+
+							destroy_str_vec( &directory_list );
+							load_folderlist( &directory_list, pfname, 9999 );
+
+							SWT_img();
+							} break;
+
+						case SDLK_F11:
+							if( fullscreen ){
+								SDL_SetWindowFullscreen( window, false );
+								fullscreen = 0;
+							}
+							else{
+								//SDL_SetWindowFullscreen( window, SDL_WINDOW_FULLSCREEN_DESKTOP );
+								SDL_SetWindowFullscreen( window, true );
+								SDL_SetWindowFullscreenMode( window,  NULL );
+								fullscreen = 1;
+							}
+							break;
+
+						case SDLK_ESCAPE:
+							if( fullscreen ){
+								SDL_SetWindowFullscreen( window, 0 );
+								//SDL_MaximizeWindow( window );
+								fullscreen = 0;
+							}
+							break;
+
+						case SDLK_DELETE && SHIFT:{
+							char path [256];
+							SDL_RemovePath( ok_vec_get( &directory_list, INDEX ) );
+							//remove_item_from_string_list( &directory_list, INDEX, &list_len );
+							ok_vec_remove_at( &directory_list, INDEX );
+							//destroy_Image( IMAGES+0 );
+							//INDEX++;
+							psel--;
+							dir = 1;
+							} break;
 					}
 					update = 1;
 
@@ -1155,33 +1432,52 @@ int main(int argc, char *argv[]){
 			}
 		}
 
-		if( update || animating ){
+		if( update || animating || tasking ){
 
 			SDL_SetRenderDrawColor( R, bg[sel_bg].r, bg[sel_bg].g, bg[sel_bg].b, bg[sel_bg].a );
 			SDL_RenderClear( R );
 
 			for (int i = 0; i < IMAGES_N; ++i ){
 
-				SDL_FRect DST = apply_transform_rect( &(IMAGES[i].RCT), &T ); 
+				SDL_Texture *TEX = NULL;
+				SDL_FRect DST = apply_transform_rect( &(IMAGES[i].RCT), &T );
 
 				switch( IMAGES[i].type ){
 
-					case STATIC:
-						if( angle_i != 0 || FLIP != SDL_FLIP_NONE ){
-							SDL_RenderTextureRotated( R, IMAGES[i].U.TEXTURE, NULL, &DST, ANGLE, NULL, FLIP );
-						} else {
-							SDL_RenderTexture( R, IMAGES[i].U.TEXTURE, NULL, &DST );
+					case SIMPLE:
+						TEX = IMAGES[i].U.TEXTURE;
+						break;
+
+					case BIG:
+						if( IMAGES[i].U.B.task ){
+							SDL_Texture *t = check_LSnB_Task( R, IMAGES[i].U.B.task );
+							if( t != NULL ){
+								IMAGES[i].U.B.SCALEDnBLURRED = t;
+								cancel_and_destroy_task( IMAGES[i].U.B.task );
+								IMAGES[i].U.B.task = NULL;
+								tasking -= 1;
+							}
+							else TEX =  IMAGES[i].U.B.ORIGINAL;
+						}
+						else{
+							if( enable_blur && T.scale < blur_zoom_threshhold ){
+								TEX = IMAGES[i].U.B.SCALEDnBLURRED;
+							} else {
+								TEX = IMAGES[i].U.B.ORIGINAL;
+							}
 						}
 						break;
 
 					case ANIMATION:
 						animation_tick( IMAGES + i );
-						if( angle_i != 0 || FLIP != SDL_FLIP_NONE ){
-							SDL_RenderTextureRotated( R, IMAGES[i].U.A.TEXTURES[ IMAGES[i].U.A.FRAME ], NULL, &DST, ANGLE, NULL, FLIP );
-						} else {
-							SDL_RenderTexture( R, IMAGES[i].U.A.TEXTURES[ IMAGES[i].U.A.FRAME ], NULL, &DST );
-						}
+						TEX = IMAGES[i].U.A.TEXTURES[ IMAGES[i].U.A.FRAME ];
 						break;
+				}
+
+				if( angle_i != 0 || FLIP != SDL_FLIP_NONE ){
+					SDL_RenderTextureRotated( R, TEX, NULL, &DST, ANGLE, NULL, FLIP );
+				} else {
+					SDL_RenderTexture( R, TEX, NULL, &DST );
 				}
 			}
 
