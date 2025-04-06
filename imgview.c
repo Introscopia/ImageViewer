@@ -2,6 +2,10 @@
 #include <SDL_image.h>
 #include "ok_lib.h"
 
+#define PLUTOSVG_BUILD_STATIC
+#define PLUTOVG_BUILD_STATIC
+#include <plutosvg/plutosvg.h>
+
 #include <windows.h>
 
 SDL_Renderer *R;
@@ -94,7 +98,7 @@ int check_extension( char *filename ){
 	const char exts [][6] = { ".png", ".jpg", "jpeg", ".gif", ".tif", "tiff", ".ico", ".bmp", "webp", ".svg" };
 
 	size_t len = SDL_strlen( filename );
-	for (int i = 0; i < 9; ++i ){
+	for (int i = 0; i < 10; ++i ){
 		if( SDL_strcasecmp( filename + len -4, exts[i] ) == 0 ){
 			return i+1;
 		}
@@ -277,6 +281,21 @@ void fit_rect( SDL_FRect *A, SDL_Rect *B ){
 	}
 }
 
+
+void draw_corners( SDL_Renderer*R, SDL_FRect *DST, int w ){
+	// Top-left
+	SDL_RenderLine(R, DST->x, DST->y, DST->x + w, DST->y);  
+	SDL_RenderLine(R, DST->x, DST->y, DST->x, DST->y + w);  
+	// Top-right
+	SDL_RenderLine(R, DST->x + DST->w - 1 - w, DST->y, DST->x + DST->w - 1, DST->y);  
+	SDL_RenderLine(R, DST->x + DST->w - 1, DST->y, DST->x + DST->w - 1, DST->y + w);  
+	// Bottom-left
+	SDL_RenderLine(R, DST->x, DST->y + DST->h - 1, DST->x + w, DST->y + DST->h - 1);  
+	SDL_RenderLine(R, DST->x, DST->y + DST->h - 1 - w, DST->x, DST->y + DST->h - 1);  
+	// Bottom-right
+	SDL_RenderLine(R, DST->x + DST->w - 1 - w, DST->y + DST->h - 1, DST->x + DST->w - 1, DST->y + DST->h - 1);
+	SDL_RenderLine(R, DST->x + DST->w - 1, DST->y + DST->h - 1 - w, DST->x + DST->w - 1, DST->y + DST->h - 1);  
+}
 
 
 // Gaussian function for weights
@@ -677,6 +696,11 @@ i2d pack_imgs( Image *imgs, int len ){
 }
 
 
+bool palette_func(void* closure, const char* name, int length, plutovg_color_t* color){
+    *color = PLUTOVG_MAKE_COLOR(5,5,5,255);
+    return true;
+}
+
 
 Image *IMAGES = NULL;
 int IMAGES_N = 0;
@@ -712,6 +736,49 @@ int load_image( char *path, Image *out ){
 	}
 	else if( EXT == 10 ){//.svg
 
+		plutosvg_document_t* doc = plutosvg_document_load_from_file( path, 1, 1 );//width, height
+		if (!doc) {
+		    SDL_Log( "Failed to load SVG file: %s\n", path );
+		    return 0;
+		}
+		plutovg_rect_t bounds;
+		plutosvg_document_extents( doc, NULL, &bounds );
+		//SDL_Log( "\n%g,%g,%g,%g", bounds.x, bounds.y, bounds.w, bounds.h );
+
+
+		int stride = bounds.w * 4; // Guaranteed 32-bit ARGB (4 bytes per pixel)
+		unsigned char* pixels = SDL_calloc(bounds.h, stride);
+
+		plutovg_surface_t* surface = plutovg_surface_create_for_data(pixels, bounds.w, bounds.h, stride);
+		//plutovg_surface_t *surface = plutovg_surface_create(width, height);
+		plutovg_canvas_t *canvas = plutovg_canvas_create( surface );
+		plutovg_canvas_translate( canvas, -bounds.x, -bounds.y );
+
+		plutovg_color_t currentc = PLUTOVG_MAKE_COLOR(5,5,5,255);
+		bool result = plutosvg_document_render( doc, NULL, canvas, 
+		                                        &currentc, palette_func, NULL);
+		
+		//unsigned char* pixels = plutovg_surface_get_data( surface );
+		//int pitch = SDL_ceil(bounds.w) * 4;
+		//int stride = plutovg_surface_get_stride( surface );
+		//SDL_Log( "pixels: %p, pitch: %d, stride: %d", pixels, pitch, stride );
+
+		SDL_Surface* sdl_surface = SDL_CreateSurfaceFrom( bounds.w, bounds.h, 
+														  SDL_PIXELFORMAT_ARGB8888, 
+														  pixels, stride );
+		//IMG_SavePNG( sdl_surface, "output.png" );
+		if( sdl_surface == NULL ){
+			SDL_Log( "ERROR converting plutosvg surf to SDL: %s", SDL_GetError() );
+		}
+		else{
+		    out->U.TEXTURE = SDL_CreateTextureFromSurface( R, sdl_surface );
+		    out->type = SIMPLE;
+		}
+
+	    SDL_DestroySurface(sdl_surface); 
+	    plutovg_canvas_destroy(canvas);  
+	    plutovg_surface_destroy(surface);
+    	plutosvg_document_destroy(doc);  
 	}
 	else{
 		loadtexture:
@@ -786,7 +853,7 @@ int load_image( char *path, Image *out ){
 			SDL_SetTextureScaleMode( out->U.TEXTURE, antialiasing );
 		}
 
-		if( fw > width || fh > height ){
+		if( (fw > width || fh > height) && EXT != 10 ){
 			out->type = BIG;
 			out->U.B.SCALEDnBLURRED = NULL;
 			//float xs = width / fw;
@@ -1458,7 +1525,10 @@ int main(int argc, char *argv[]){
 								cancel_and_destroy_task( IMAGES[i].U.B.task );
 								IMAGES[i].U.B.task = NULL;
 								tasking -= 1;
-								TEX = IMAGES[i].U.B.SCALEDnBLURRED;
+								if( enable_blur ){
+									TEX = IMAGES[i].U.B.SCALEDnBLURRED;
+								}
+								else TEX =  IMAGES[i].U.B.ORIGINAL;
 							}
 							else TEX =  IMAGES[i].U.B.ORIGINAL;
 						}
@@ -1476,6 +1546,11 @@ int main(int argc, char *argv[]){
 						TEX = IMAGES[i].U.A.TEXTURES[ IMAGES[i].U.A.FRAME ];
 						break;
 				}
+
+				//set a contrasting color
+				if( sel_bg > 2 ) SDL_SetRenderDrawColor( R, bg[0].r, bg[0].g, bg[0].b, bg[0].a );
+				else SDL_SetRenderDrawColor( R, bg[4].r, bg[4].g, bg[4].b, bg[4].a );
+				draw_corners( R, &DST, 5 );
 
 				if( angle_i != 0 || FLIP != SDL_FLIP_NONE ){
 					SDL_RenderTextureRotated( R, TEX, NULL, &DST, ANGLE, NULL, FLIP );

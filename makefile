@@ -13,6 +13,12 @@ ifeq ($(DETECTED_OS),Windows)
 	INCLUDE_PATHS += -IC:/SDL/SDL3-3.2.10/x86_64-w64-mingw32/include/
 	INCLUDE_PATHS += -IC:/SDL/SDL3_image-3.2.4/x86_64-w64-mingw32/include/SDL3_image
 
+	INCLUDE_PATHS += -IC:/Users/Introscopia/Projetos/Programming/C/plutosvg/install/include/plutosvg
+	INCLUDE_PATHS += -IC:/Users/Introscopia/Projetos/Programming/C/plutosvg/install/include/plutovg
+	INCLUDE_PATHS += -IC:/Users/Introscopia/Projetos/Programming/C/plutosvg/install/include/
+	INCLUDE_PATHS += C:/Users/Introscopia/Projetos/Programming/C/plutosvg/install/lib/libplutosvg.a
+	INCLUDE_PATHS += C:/Users/Introscopia/Projetos/Programming/C/plutosvg/install/lib/libplutovg.a
+
 	LIBRARY_PATHS = -LC:/SDL/SDL3-3.2.10/x86_64-w64-mingw32/lib
 	LIBRARY_PATHS += -LC:/SDL/SDL3_image-3.2.4/x86_64-w64-mingw32/lib
 
