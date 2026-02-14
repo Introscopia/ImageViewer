@@ -1,7 +1,8 @@
 CC = gcc
 
-OBJS = imgview.c 
-	
+OBJS = imgview.c
+OLDS = prev.c
+
 ifeq ($(OS),Windows_NT) # Windows_NT is the identifier for all versions of Windows
 	DETECTED_OS := Windows
 else
@@ -9,9 +10,10 @@ else
 endif
 
 ifeq ($(DETECTED_OS),Windows)
-	INCLUDE_PATHS = -IC:/SDL/SDL3-3.2.10/x86_64-w64-mingw32/include/SDL3
-	INCLUDE_PATHS += -IC:/SDL/SDL3-3.2.10/x86_64-w64-mingw32/include/
+	INCLUDE_PATHS = -IC:/SDL/SDL3-3.2.26/x86_64-w64-mingw32/include/SDL3
+	INCLUDE_PATHS += -IC:/SDL/SDL3-3.2.26/x86_64-w64-mingw32/include/
 	INCLUDE_PATHS += -IC:/SDL/SDL3_image-3.2.4/x86_64-w64-mingw32/include/SDL3_image
+	INCLUDE_PATHS += -IC:/SDL/SDL3_shadercross-3.0.0-windows-mingw-x64/include/SDL3_shadercross/
 
 	INCLUDE_PATHS += -IC:/Users/Introscopia/Projetos/Programming/C/plutosvg/install/include/plutosvg
 	INCLUDE_PATHS += -IC:/Users/Introscopia/Projetos/Programming/C/plutosvg/install/include/plutovg
@@ -19,13 +21,14 @@ ifeq ($(DETECTED_OS),Windows)
 	INCLUDE_PATHS += C:/Users/Introscopia/Projetos/Programming/C/plutosvg/install/lib/libplutosvg.a
 	INCLUDE_PATHS += C:/Users/Introscopia/Projetos/Programming/C/plutosvg/install/lib/libplutovg.a
 
-	LIBRARY_PATHS = -LC:/SDL/SDL3-3.2.10/x86_64-w64-mingw32/lib
+	LIBRARY_PATHS = -LC:/SDL/SDL3-3.2.26/x86_64-w64-mingw32/lib
 	LIBRARY_PATHS += -LC:/SDL/SDL3_image-3.2.4/x86_64-w64-mingw32/lib
+	LIBRARY_PATHS += -LC:/SDL/SDL3_shadercross-3.0.0-windows-mingw-x64/lib
 
-	LINKER_FLAGS = -lmingw32 -lSDL3 -lSDL3_image
+	LINKER_FLAGS = -lSDL3 -lSDL3_image -lSDL3_shadercross
 else
 	INCLUDE_PATHS = -I/usr/include/SDL3
-	LINKER_FLAGS = -lm -lSDL3 -lSDL3_image
+	LINKER_FLAGS = -lSDL3 -lSDL3_image -lSDL3_shadercross
 endif
 
 
@@ -44,3 +47,5 @@ debug : $(OBJS)
 	$(CC) $(OBJS) $(INCLUDE_PATHS) $(LIBRARY_PATHS) $(COMPILER_FLAGS_DEBUG) $(LINKER_FLAGS) -std=c11 -o $(OBJ_NAME)
 max : $(OBJS)
 	$(CC) $(OBJS) $(INCLUDE_PATHS) $(LIBRARY_PATHS) $(COMPILER_FLAGS_MAX) $(LINKER_FLAGS) -std=c11 -o $(OBJ_NAME)
+old : $(OLDS)
+	$(CC) $(OLDS) $(INCLUDE_PATHS) $(LIBRARY_PATHS) $(COMPILER_FLAGS_RELEASE) $(LINKER_FLAGS) -std=c11 -o Old_Viewer

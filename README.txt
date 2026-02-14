@@ -1,8 +1,13 @@
 "ImageViewer" is an ultra-minimalistic image viewing program 
-for Windows originally built with C and SDL2 by Introscopia in 2020. 
-This latest (2025-03-23) update brings this little program to SDL3 and to 64 bits!
+for Windows originally built with C and SDL2 by Introscopia in 2020.
+
+The 2025-03-23 update brings this little program to SDL3 and to 64 bits!
 It supports webp again, animations, and now sports multi-image capabilities:
 Just drag-and-drop image files onto the window!
+
+The Latest update () brings SVG support with plutosvg:
+https://github.com/sammycage/plutosvg/tree/master
+which is under the MIT license.
 
 Uses OK_LIB: https://github.com/brackeen/ok-lib
 which is under the MIT license.
@@ -38,6 +43,7 @@ introscopia@protonmail.com
 	NEAREST,
 	LINEAR,
 	PIXELART (coming soon!)
+> [B] to toggle the blur filter.
 > [C] to cycle through background colors.
 
 > [F11] toggle fullscreen.

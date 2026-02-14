@@ -9,3 +9,16 @@ SDL3.dll
 SDL3_image.dll
 surf.c
 surftest.exe
+\#ENTER.bat
+\#MAKE.bat
+\#MAKE.bat
+SDL3.dll
+SDL3_shadercross.dll
+Old_Viewer.exe
+*.dll
+*.zip
+surf.c
+surftest.exe
+prev.c
+just_show.exe
+realtime blur.c
